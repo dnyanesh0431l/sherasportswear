@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Locked down until feature rules are implemented per-collection.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
