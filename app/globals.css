@@ -1,21 +1,22 @@
 @import "tailwindcss";
 
+/* If Tailwind v4, use: @import "tailwindcss"; */
+
 @layer base {
-  :root {
-    --brand-orange: #ff5a00;
-    --brand-black: #111111;
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-
   body {
-    @apply bg-white text-gray-900 font-sans antialiased;
+    font-family: var(--font-inter), system-ui, sans-serif;
   }
 }
 
-/* Custom utility for hiding scrollbars in the carousel dots */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+@layer utilities {
+  .font-display {
+    font-family: var(--font-anton), "Impact", sans-serif;
+    letter-spacing: -0.02em;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
