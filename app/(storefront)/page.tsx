@@ -5,7 +5,6 @@ import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import { adminDb } from "../../lib/firebase/admin";
 
-// Keep metadata export (it is perfectly safe)
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
@@ -77,11 +76,12 @@ function discountPercent(mrp: number, price: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Data fetching (SAFE VERSION)
+// Data fetching
 // ---------------------------------------------------------------------------
 
 async function getHomepageData() {
   try {
+    // Correctly assign the Firestore instance
     const db = adminDb;
 
     const [
@@ -174,6 +174,7 @@ async function getHomepageData() {
     return { sections, banners, products, categories, collections };
   } catch (error) {
     console.error("Failed to fetch homepage data during build/render:", error);
+    // Safe fallback so the page doesn't crash
     return {
       sections: [] as HomepageSection[],
       banners: {} as Record<string, Banner>,
@@ -614,8 +615,7 @@ function SectionRenderer({
 // ---------------------------------------------------------------------------
 
 export default async function StorefrontHomePage() {
-  // THIS IS THE MAGIC FIX: It safely disables static generation
-  // without triggering the Next.js compiler bug.
+  // Opt out of static generation safely
   noStore();
 
   const data = await getHomepageData();
@@ -645,6 +645,7 @@ export default async function StorefrontHomePage() {
         <SectionRenderer key={section.id} section={section} data={data} />
       ))}
 
+      {/* Newsletter */}
       <section className="bg-neutral-950 py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-500 mb-3">
