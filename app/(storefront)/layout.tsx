@@ -155,7 +155,7 @@ export default function StorefrontLayout({
 
           <div className="mt-12 pt-6 border-t border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-neutral-500">
             <p>
-              © {new Date().getFullYear()} Shera Sports Wear. All rights
+              © 2026 Shera Sports Wear. All rights
               reserved.
             </p>
             <p className="text-[10px] tracking-widest uppercase">
