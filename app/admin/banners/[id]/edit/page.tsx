@@ -1,4 +1,7 @@
+// app/admin/banners/[id]/edit/page.tsx
 "use client";
+
+export const dynamic = "force-dynamic"; // <-- THIS IS THE CRITICAL FIX
 
 import { db } from "@/lib/firebase/client";
 import {
@@ -8,7 +11,7 @@ import {
   Timestamp,
   updateDoc,
 } from "firebase/firestore";
-import { ArrowLeft, Image as ImageIcon, Loader2, Save } from "lucide-react";
+import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -45,7 +48,7 @@ function toLocalDateTimeString(d: Date | null): string {
   if (!d) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
+    d.getHours(),
   )}:${pad(d.getMinutes())}`;
 }
 
@@ -110,7 +113,7 @@ export default function EditBannerPage() {
     }
     if (ctaUrl.trim() && !isValidCtaUrl(ctaUrl)) {
       toast.error(
-        "CTA URL must be an internal path (starting with /) or an http/https URL"
+        "CTA URL must be an internal path (starting with /) or an http/https URL",
       );
       return;
     }

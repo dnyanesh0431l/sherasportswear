@@ -1,12 +1,12 @@
 // app/(storefront)/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowRight, Tag, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Tag } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 // ✅ IMPORT CLIENT SDK, NOT ADMIN SDK
-import { db } from "../../lib/firebase/client"; 
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
+import { db } from "../../lib/firebase/client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -301,9 +301,7 @@ function PromoStripSection({
           <h3 className="font-display text-2xl sm:text-3xl uppercase tracking-wide text-white">
             {title}
           </h3>
-          {subtitle && (
-            <p className="text-white/90 text-sm mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-white/90 text-sm mt-1">{subtitle}</p>}
         </div>
         <Link
           href={ctaUrl}
@@ -449,11 +447,28 @@ export default function StorefrontHomePage() {
           categoriesSnap,
           collectionsSnap,
         ] = await Promise.all([
-          getDocs(query(collection(db, "homepageSections"), orderBy("sortOrder", "asc"))),
-          getDocs(query(collection(db, "banners"), orderBy("sortOrder", "asc"))),
-          getDocs(query(collection(db, "products"), orderBy("createdAt", "desc"), limit(48))),
-          getDocs(query(collection(db, "categories"), orderBy("sortOrder", "asc"))),
-          getDocs(query(collection(db, "collections"), orderBy("sortOrder", "asc"))),
+          getDocs(
+            query(
+              collection(db, "homepageSections"),
+              orderBy("sortOrder", "asc"),
+            ),
+          ),
+          getDocs(
+            query(collection(db, "banners"), orderBy("sortOrder", "asc")),
+          ),
+          getDocs(
+            query(
+              collection(db, "products"),
+              orderBy("createdAt", "desc"),
+              limit(48),
+            ),
+          ),
+          getDocs(
+            query(collection(db, "categories"), orderBy("sortOrder", "asc")),
+          ),
+          getDocs(
+            query(collection(db, "collections"), orderBy("sortOrder", "asc")),
+          ),
         ]);
 
         const banners: Record<string, Banner> = {};
@@ -479,7 +494,10 @@ export default function StorefrontHomePage() {
               id: d.id,
               name: pData.name || "",
               slug: pData.slug || d.id,
-              basePricePaise: typeof pData.basePricePaise === "number" ? pData.basePricePaise : 0,
+              basePricePaise:
+                typeof pData.basePricePaise === "number"
+                  ? pData.basePricePaise
+                  : 0,
               mrpPaise: typeof pData.mrpPaise === "number" ? pData.mrpPaise : 0,
               images: Array.isArray(pData.images) ? pData.images : [],
               categoryId: pData.categoryId || "",
@@ -509,7 +527,9 @@ export default function StorefrontHomePage() {
               slug: cData.slug || d.id,
               image: cData.image || null,
               description: cData.description || null,
-              productIds: Array.isArray(cData.productIds) ? cData.productIds : [],
+              productIds: Array.isArray(cData.productIds)
+                ? cData.productIds
+                : [],
             };
           });
 
@@ -522,16 +542,25 @@ export default function StorefrontHomePage() {
               type: sData.type || "",
               title: sData.title || null,
               subtitle: sData.subtitle || null,
-              sortOrder: typeof sData.sortOrder === "number" ? sData.sortOrder : 0,
+              sortOrder:
+                typeof sData.sortOrder === "number" ? sData.sortOrder : 0,
               config: sData.config || {},
-              categoryIds: Array.isArray(sData.categoryIds) ? sData.categoryIds : [],
+              categoryIds: Array.isArray(sData.categoryIds)
+                ? sData.categoryIds
+                : [],
             };
           });
 
         setData({ sections, banners, products, categories, collections });
       } catch (error) {
         console.error("Failed to load storefront data:", error);
-        setData({ sections: [], banners: {}, products: [], categories: [], collections: [] });
+        setData({
+          sections: [],
+          banners: {},
+          products: [],
+          categories: [],
+          collections: [],
+        });
       } finally {
         setLoading(false);
       }
