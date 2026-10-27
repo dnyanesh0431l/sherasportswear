@@ -1,8 +1,6 @@
 // app/admin/banners/[id]/edit/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic"; // <-- THIS IS THE CRITICAL FIX
-
 import { db } from "@/lib/firebase/client";
 import {
   doc,
@@ -14,7 +12,7 @@ import {
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 const PLACEMENTS = [
@@ -52,7 +50,8 @@ function toLocalDateTimeString(d: Date | null): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-export default function EditBannerPage() {
+// 1. Move the actual form logic into a separate component
+function EditBannerForm() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const router = useRouter();
@@ -346,6 +345,21 @@ export default function EditBannerPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+// 2. Export the page wrapped in Suspense to fix the Next.js build error
+export default function EditBannerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-10 text-center">
+          <Loader2 className="h-6 w-6 animate-spin text-orange-500 mx-auto" />
+        </div>
+      }
+    >
+      <EditBannerForm />
+    </Suspense>
   );
 }
 
