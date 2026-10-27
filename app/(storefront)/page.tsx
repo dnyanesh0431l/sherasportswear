@@ -1,10 +1,10 @@
 // app/(storefront)/page.tsx
-import Link from "next/link";
 import { ArrowRight, Tag } from "lucide-react";
-import { getDocs, query, collection, orderBy } from "firebase/firestore";
-import { adminDb  } from "../../lib/firebase/admin";
 import type { Metadata } from "next";
-// export const dynamic = "force-dynamic"; // <-- ADD THIS LINE
+import Link from "next/link";
+import { adminDb } from "../../lib/firebase/admin";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
