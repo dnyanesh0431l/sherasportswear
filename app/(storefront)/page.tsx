@@ -72,7 +72,6 @@ type Slide = Pick<
   "id" | "title" | "subtitle" | "imageUrl" | "ctaLabel" | "ctaUrl"
 >;
 
-// ✅ banners is ALWAYS an array now
 type HomepageData = {
   banners: Banner[];
   products: Product[];
@@ -84,6 +83,9 @@ type HomepageData = {
 // Helpers
 // ---------------------------------------------------------------------------
 const WRAP = "mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8";
+
+// Global scrollbar hiding classes
+const HIDE_SCROLLBAR = "scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]";
 
 function formatINR(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
@@ -120,7 +122,7 @@ function colorHex(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hero Slider
+// Hero Slider (Compact)
 // ---------------------------------------------------------------------------
 function HeroSlider({ slides }: { slides: Slide[] }) {
   const [index, setIndex] = useState(0);
@@ -134,7 +136,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
   if (!slide) return null;
 
   return (
-    <section className="relative isolate overflow-hidden bg-neutral-950 text-white min-h-[500px] lg:min-h-[600px] flex items-center">
+    <section className="relative isolate overflow-hidden bg-neutral-950 text-white min-h-[420px] lg:min-h-[480px] flex items-center">
       {slide.imageUrl && (
         <img
           src={slide.imageUrl}
@@ -145,31 +147,31 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
       )}
       <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/50 to-black/10 lg:bg-gradient-to-r lg:from-black/90 lg:via-black/60 lg:to-transparent" />
 
-      <div className={`${WRAP} relative z-10 w-full py-16`}>
+      <div className={`${WRAP} relative z-10 w-full py-10`}>
         <div className="max-w-2xl">
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.3em] text-white/80">
             Shera Sports Wear
           </p>
-          <h1 className="font-display text-5xl font-black italic uppercase leading-[0.9] tracking-tight sm:text-6xl lg:text-[5.5rem]">
+          <h1 className="font-display text-4xl font-black italic uppercase leading-[0.9] tracking-tight sm:text-5xl lg:text-[4.5rem]">
             {top}
             {top && <br />}
             <span className="text-brand">{accent}</span>
           </h1>
           {slide.subtitle && (
-            <p className="mt-5 max-w-md text-sm leading-relaxed text-white/90 sm:text-base font-medium">
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-white/90 sm:text-base font-medium">
               {slide.subtitle}
             </p>
           )}
-          <div className="mt-8 flex flex-wrap items-center gap-4">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               href={slide.ctaUrl || "/products"}
-              className="inline-flex items-center gap-2 rounded-md bg-brand px-8 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-brand-hover"
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-6 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-brand-hover"
             >
               {slide.ctaLabel || "Shop Now"} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/collections"
-              className="inline-flex items-center rounded-md border-2 border-white/80 px-8 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-white hover:text-black"
+              className="inline-flex items-center rounded-md border-2 border-white/80 px-6 py-2.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-white hover:text-black"
             >
               Explore Collection
             </Link>
@@ -178,10 +180,10 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
       </div>
 
       <div className="pointer-events-none absolute right-[10%] top-[40%] hidden -translate-y-1/2 -rotate-12 lg:block z-10">
-        <p className="text-2xl font-bold italic uppercase leading-tight tracking-widest text-white/90 drop-shadow-lg">
+        <p className="text-xl font-bold italic uppercase leading-tight tracking-widest text-white/90 drop-shadow-lg">
           Discipline<br />Performance<br />Progress
         </p>
-        <span className="mt-3 block h-1.5 w-48 -rotate-3 rounded-full bg-brand" />
+        <span className="mt-2 block h-1 w-40 -rotate-3 rounded-full bg-brand" />
       </div>
 
       {count > 1 && (
@@ -189,25 +191,25 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
           <button
             onClick={() => go(-1)}
             aria-label="Previous slide"
-            className="absolute left-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
+            className="absolute left-4 top-1/2 z-20 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
           >
-            <ChevronLeft className="h-6 w-6" />
+            <ChevronLeft className="h-5 w-5" />
           </button>
           <button
             onClick={() => go(1)}
             aria-label="Next slide"
-            className="absolute right-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
+            className="absolute right-4 top-1/2 z-20 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
           >
-            <ChevronRight className="h-6 w-6" />
+            <ChevronRight className="h-5 w-5" />
           </button>
-          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+          <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-1.5">
             {slides.map((s, i) => (
               <button
                 key={s.id}
                 onClick={() => setIndex(i)}
                 aria-label={`Go to slide ${i + 1}`}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
-                  i === index ? "w-8 bg-brand" : "w-2 bg-white/40"
+                  i === index ? "w-6 bg-brand" : "w-1.5 bg-white/40"
                 }`}
               />
             ))}
@@ -219,26 +221,26 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Category Row
+// Category Row (Compact)
 // ---------------------------------------------------------------------------
 function CategoryRow({ categories }: { categories: Category[] }) {
   if (!categories.length) return null;
 
   return (
-    <section className={`${WRAP} py-6 lg:py-8`}>
-      <div className="hidden md:grid md:grid-cols-5 gap-4">
+    <section className={`${WRAP} py-4`}>
+      <div className="hidden md:grid md:grid-cols-5 gap-3">
         {categories.map((c) => (
           <Link
             key={c.id}
             href={`/categories/${c.slug}`}
-            className="group relative flex h-[110px] overflow-hidden rounded-lg bg-[#f4f4f4]"
+            className="group relative flex h-[90px] overflow-hidden rounded-lg bg-[#f4f4f4]"
           >
-            <div className="relative z-10 flex flex-col justify-center pl-5 pr-2">
-              <h3 className="font-display text-[15px] font-black uppercase leading-tight text-neutral-900 lg:text-base">
+            <div className="relative z-10 flex flex-col justify-center pl-4 pr-2">
+              <h3 className="font-display text-sm font-black uppercase leading-tight text-neutral-900 lg:text-[15px]">
                 {c.name}
               </h3>
-              <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-neutral-900 transition-transform group-hover:translate-x-1">
-                Shop Now <ArrowRight className="h-3 w-3" />
+              <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-neutral-900 transition-transform group-hover:translate-x-1">
+                Shop Now <ArrowRight className="h-2.5 w-2.5" />
               </span>
             </div>
             {c.image && (
@@ -254,21 +256,22 @@ function CategoryRow({ categories }: { categories: Category[] }) {
         ))}
       </div>
 
-      <div className="no-scrollbar -mx-4 flex gap-4 overflow-x-auto px-4 md:hidden">
+      {/* Mobile Scroller */}
+      <div className={`${HIDE_SCROLLBAR} -mx-4 flex gap-4 overflow-x-auto px-4 md:hidden`}>
         {categories.map((c) => (
           <Link
             key={c.id}
             href={`/categories/${c.slug}`}
-            className="flex w-20 shrink-0 flex-col items-center gap-2"
+            className="flex w-[64px] shrink-0 flex-col items-center gap-1.5"
           >
-            <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+            <span className="grid h-[60px] w-[60px] place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
               {c.image ? (
                 <img src={c.image} alt="" className="h-full w-full object-cover" />
               ) : (
-                <Tag className="h-6 w-6 text-neutral-400" />
+                <Tag className="h-5 w-5 text-neutral-400" />
               )}
             </span>
-            <span className="text-center text-[11px] font-bold text-neutral-800">{c.name}</span>
+            <span className="text-center text-[10px] font-bold text-neutral-800">{c.name}</span>
           </Link>
         ))}
       </div>
@@ -277,7 +280,7 @@ function CategoryRow({ categories }: { categories: Category[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Product Card
+// Product Card (Compact)
 // ---------------------------------------------------------------------------
 function ProductCard({ product }: { product: Product }) {
   const { addItem, removeItem, isInWishlist } = useWishlist();
@@ -307,7 +310,7 @@ function ProductCard({ product }: { product: Product }) {
   return (
     <div className="group relative flex flex-col">
       <Link href={`/products/${product.slug}`} className="block relative">
-        <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#f5f5f5]">
+        <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-[#f5f5f5]">
           {image ? (
             <img
               src={image}
@@ -317,12 +320,12 @@ function ProductCard({ product }: { product: Product }) {
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-neutral-300">
-              <Tag className="h-10 w-10" />
+              <Tag className="h-8 w-8" />
             </div>
           )}
           
           {discount > 0 && (
-            <span className="absolute left-2 top-2 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+            <span className="absolute left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
               {discount}% OFF
             </span>
           )}
@@ -331,27 +334,27 @@ function ProductCard({ product }: { product: Product }) {
             type="button"
             onClick={toggleWishlist}
             aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
-            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-transparent text-neutral-500 transition-colors hover:text-red-500"
+            className="absolute right-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full bg-transparent text-neutral-500 transition-colors hover:text-red-500"
           >
-            <Heart className={`h-5 w-5 ${isSaved ? "fill-red-500 text-red-500" : ""}`} />
+            <Heart className={`h-4 w-4 ${isSaved ? "fill-red-500 text-red-500" : ""}`} />
           </button>
         </div>
 
-        <div className="mt-3 flex flex-col gap-1">
-          <h3 className="line-clamp-1 text-[13px] font-bold text-neutral-900 sm:text-sm">
+        <div className="mt-2 flex flex-col gap-0.5">
+          <h3 className="line-clamp-1 text-[12px] font-bold text-neutral-900 sm:text-[13px]">
             {product.name}
           </h3>
           
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-[14px] font-black text-neutral-950 sm:text-[15px]">
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+            <span className="text-[13px] font-black text-neutral-950 sm:text-[14px]">
               {formatINR(product.basePricePaise)}
             </span>
             {discount > 0 && (
               <>
-                <span className="text-[12px] text-neutral-400 line-through">
+                <span className="text-[11px] text-neutral-400 line-through">
                   {formatINR(product.mrpPaise)}
                 </span>
-                <span className="text-[11px] font-bold text-[#e84912]">
+                <span className="text-[10px] font-bold text-[#e84912]">
                   Save {formatINR(product.mrpPaise - product.basePricePaise)}
                 </span>
               </>
@@ -359,11 +362,11 @@ function ProductCard({ product }: { product: Product }) {
           </div>
 
           {product.colors?.length > 0 && (
-            <div className="mt-1 flex gap-1.5">
+            <div className="mt-0.5 flex gap-1">
               {product.colors.slice(0, 4).map((c, i) => (
                 <span
                   key={`${c}-${i}`}
-                  className="h-3 w-3 rounded-full border border-neutral-300"
+                  className="h-2.5 w-2.5 rounded-full border border-neutral-300"
                   style={{ background: colorHex(c) }}
                 />
               ))}
@@ -376,7 +379,7 @@ function ProductCard({ product }: { product: Product }) {
 }
 
 // ---------------------------------------------------------------------------
-// Collection Section
+// Collection Section (Compact)
 // ---------------------------------------------------------------------------
 function CollectionSection({
   collection,
@@ -388,32 +391,27 @@ function CollectionSection({
   if (!products.length) return null;
 
   return (
-    <section className={`${WRAP} py-8 lg:py-10`}>
-      <div className="mb-6 flex items-end justify-between gap-4">
+    <section className={`${WRAP} py-5`}>
+      <div className="mb-4 flex items-end justify-between gap-4">
         <div>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-brand">
+          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-[0.15em] text-brand">
             Curated Edit
           </p>
-          <h2 className="font-display text-3xl font-black uppercase leading-none tracking-tight sm:text-4xl">
+          <h2 className="font-display text-2xl font-black uppercase leading-none tracking-tight sm:text-3xl">
             {collection.name}
           </h2>
-          {collection.description && (
-            <p className="mt-2 text-sm text-neutral-500 font-medium">
-              {collection.description}
-            </p>
-          )}
         </div>
         <Link
           href={`/collections/${collection.slug}`}
-          className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[13px] font-bold text-neutral-900 transition-colors hover:text-brand mb-1"
+          className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[12px] font-bold text-neutral-900 transition-colors hover:text-brand mb-0.5"
         >
-          View all <ArrowRight className="h-3.5 w-3.5" />
+          View all <ArrowRight className="h-3 w-3" />
         </Link>
       </div>
 
-      <div className="no-scrollbar -mx-4 flex snap-x gap-4 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-5 md:overflow-visible md:px-0">
+      <div className={`${HIDE_SCROLLBAR} -mx-4 flex snap-x gap-3 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-5 md:overflow-visible md:px-0`}>
         {products.map((p) => (
-          <div key={p.id} className="w-[60%] shrink-0 snap-start sm:w-[40%] md:w-auto">
+          <div key={p.id} className="w-[48%] shrink-0 snap-start sm:w-[30%] md:w-auto">
             <ProductCard product={p} />
           </div>
         ))}
@@ -423,19 +421,19 @@ function CollectionSection({
 }
 
 // ---------------------------------------------------------------------------
-// Promo Banners
+// Promo Banners (Compact)
 // ---------------------------------------------------------------------------
 function PromoBanners({ banners }: { banners: Banner[] }) {
   if (!banners.length) return null;
 
   return (
-    <section className={`${WRAP} py-6`}>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <section className={`${WRAP} py-4`}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {banners.map((b) => (
           <Link
             key={b.id}
             href={b.ctaUrl || "/products"}
-            className="group relative flex h-[200px] md:h-[240px] overflow-hidden rounded-xl bg-neutral-900"
+            className="group relative flex h-[160px] md:h-[180px] overflow-hidden rounded-lg bg-neutral-900"
           >
             {b.imageUrl && (
               <img
@@ -446,15 +444,15 @@ function PromoBanners({ banners }: { banners: Banner[] }) {
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
             
-            <div className="relative z-10 flex flex-col justify-end p-6 md:p-8 w-full">
-              <h3 className="font-display text-2xl md:text-3xl font-black italic uppercase leading-[0.95] text-white">
+            <div className="relative z-10 flex flex-col justify-end p-4 md:p-5 w-full">
+              <h3 className="font-display text-xl md:text-2xl font-black italic uppercase leading-[0.95] text-white">
                 {b.title}
               </h3>
               {b.subtitle && (
-                <p className="mt-2 text-sm text-white/80">{b.subtitle}</p>
+                <p className="mt-1 text-xs text-white/80">{b.subtitle}</p>
               )}
-              <span className="mt-4 inline-flex w-fit items-center gap-2 rounded-md bg-brand px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition-colors group-hover:bg-brand-hover">
-                {b.ctaLabel || "Explore"} <ArrowRight className="h-3.5 w-3.5" />
+              <span className="mt-3 inline-flex w-fit items-center gap-1.5 rounded bg-brand px-4 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white transition-colors group-hover:bg-brand-hover">
+                {b.ctaLabel || "Explore"} <ArrowRight className="h-3 w-3" />
               </span>
             </div>
           </Link>
@@ -465,18 +463,18 @@ function PromoBanners({ banners }: { banners: Banner[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Features Strip
+// Features Strip (Compact)
 // ---------------------------------------------------------------------------
 function FeaturesStrip() {
   return (
-    <section className={`${WRAP} py-10 border-t border-neutral-100 mt-6`}>
-      <ul className="grid grid-cols-2 gap-y-8 gap-x-4 lg:grid-cols-4">
+    <section className={`${WRAP} py-6 border-t border-neutral-100 mt-2`}>
+      <ul className="grid grid-cols-2 gap-y-4 gap-x-4 lg:grid-cols-4">
         {FEATURES.map(({ icon: Icon, title, sub }) => (
-          <li key={title} className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-3">
-            <Icon className="h-7 w-7 shrink-0 text-neutral-800" strokeWidth={1.5} />
+          <li key={title} className="flex flex-row items-center sm:items-start text-left gap-2.5">
+            <Icon className="h-6 w-6 shrink-0 text-neutral-800" strokeWidth={1.5} />
             <div>
-              <p className="text-[13px] font-bold text-neutral-900">{title}</p>
-              <p className="text-[12px] text-neutral-500 mt-0.5">{sub}</p>
+              <p className="text-[12px] font-bold text-neutral-900">{title}</p>
+              <p className="text-[11px] text-neutral-500 mt-0.5">{sub}</p>
             </div>
           </li>
         ))}
@@ -506,7 +504,6 @@ export default function StorefrontHomePage() {
             byOrder("collections"),
           ]);
 
-        // ✅ Force banners to be an ARRAY
         const banners: Banner[] = bannersSnap.docs
           .map((d) => {
             const b = d.data();
@@ -570,7 +567,6 @@ export default function StorefrontHomePage() {
         setData({ banners, products, categories, collections });
       } catch (error) {
         console.error("Failed to load storefront data:", error);
-        // ✅ fallback is also an array
         setData({ banners: [], products: [], categories: [], collections: [] });
       } finally {
         setLoading(false);
@@ -590,7 +586,6 @@ export default function StorefrontHomePage() {
 
   if (!data) return null;
 
-  // 1. Hero Slides (all banners with placement "home_hero")
   const heroBanners = data.banners.filter((b) => b.placement === "home_hero");
   const heroSlides: Slide[] = heroBanners.length > 0
     ? heroBanners.map((b) => ({
@@ -610,12 +605,10 @@ export default function StorefrontHomePage() {
         ctaUrl: "/products",
       }];
 
-  // 2. Promo Banners (placement "home_strip")
   const promoBanners = data.banners
     .filter((b) => b.placement === "home_strip")
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // 3. Collections with their products mapped
   const collectionSections = data.collections
     .map((col) => {
       const colProducts = data.products
@@ -626,17 +619,11 @@ export default function StorefrontHomePage() {
     .filter((c) => c.products.length > 0);
 
   return (
-    <div className="bg-white">
-      {/* 1. Hero Carousel (Using DB Banners) */}
+    // Wraps the whole page to ensure scrollbars are hidden globally
+    <div className={`bg-white ${HIDE_SCROLLBAR} overflow-hidden`}>
       <HeroSlider slides={heroSlides} />
-
-      {/* 2. Categories (5 columns) */}
       <CategoryRow categories={data.categories.slice(0, 5)} />
-
-      {/* 3. Promo Banners */}
       {promoBanners.length > 0 && <PromoBanners banners={promoBanners} />}
-
-      {/* 4. Collections mapped to product grids */}
       {collectionSections.map((section) => (
         <CollectionSection
           key={section.collection.id}
@@ -644,8 +631,6 @@ export default function StorefrontHomePage() {
           products={section.products}
         />
       ))}
-
-      {/* 5. Features Strip */}
       <FeaturesStrip />
     </div>
   );
