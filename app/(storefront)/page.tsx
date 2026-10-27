@@ -1,18 +1,12 @@
 // app/(storefront)/page.tsx
-import { ArrowRight, Tag } from "lucide-react";
-import type { Metadata } from "next";
+"use client";
+
+import { useEffect, useState } from "react";
+import { ArrowRight, Tag, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { adminDb } from "../../lib/firebase/admin";
-
-// ✅ Force dynamic rendering at the route level
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-
-export const metadata: Metadata = {
-  title: "Shera Sports Wear — Built to Move",
-  description:
-    "Premium performance sportswear engineered for training, running, and everyday movement.",
-};
+// ✅ IMPORT CLIENT SDK, NOT ADMIN SDK
+import { db } from "../../lib/firebase/client"; 
+import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +59,14 @@ type HomepageSection = {
   categoryIds?: string[];
 };
 
+type HomepageData = {
+  sections: HomepageSection[];
+  banners: Record<string, Banner>;
+  products: Product[];
+  categories: Category[];
+  collections: Collection[];
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -76,115 +78,6 @@ function formatINR(paise: number): string {
 function discountPercent(mrp: number, price: number): number {
   if (mrp <= price) return 0;
   return Math.round(((mrp - price) / mrp) * 100);
-}
-
-// ---------------------------------------------------------------------------
-// Data fetching
-// ---------------------------------------------------------------------------
-
-async function getHomepageData() {
-  try {
-    const db = adminDb;
-
-    const [
-      sectionsSnap,
-      bannersSnap,
-      productsSnap,
-      categoriesSnap,
-      collectionsSnap,
-    ] = await Promise.all([
-      db.collection("homepageSections").orderBy("sortOrder", "asc").get(),
-      db.collection("banners").orderBy("sortOrder", "asc").get(),
-      db.collection("products").orderBy("createdAt", "desc").limit(48).get(),
-      db.collection("categories").orderBy("sortOrder", "asc").get(),
-      db.collection("collections").orderBy("sortOrder", "asc").get(),
-    ]);
-
-    const banners: Record<string, Banner> = {};
-    bannersSnap.docs.forEach((d: any) => {
-      const data = d.data();
-      if (data.isActive === false) return;
-      banners[d.id] = {
-        id: d.id,
-        title: data.title || "",
-        subtitle: data.subtitle || null,
-        imageUrl: data.imageUrl || "",
-        ctaLabel: data.ctaLabel || null,
-        ctaUrl: data.ctaUrl || null,
-        placement: data.placement || "",
-      };
-    });
-
-    const products: Product[] = productsSnap.docs
-      .filter((d: any) => d.data().status === "active")
-      .map((d: any) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: data.name || "",
-          slug: data.slug || d.id,
-          basePricePaise:
-            typeof data.basePricePaise === "number" ? data.basePricePaise : 0,
-          mrpPaise: typeof data.mrpPaise === "number" ? data.mrpPaise : 0,
-          images: Array.isArray(data.images) ? data.images : [],
-          categoryId: data.categoryId || "",
-        };
-      });
-
-    const categories: Category[] = categoriesSnap.docs
-      .filter((d: any) => d.data().status === "active")
-      .map((d: any) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: data.name || "",
-          slug: data.slug || d.id,
-          image: data.image || null,
-          description: data.description || null,
-        };
-      });
-
-    const collections: Collection[] = collectionsSnap.docs
-      .filter((d: any) => d.data().status === "active")
-      .map((d: any) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          name: data.name || "",
-          slug: data.slug || d.id,
-          image: data.image || null,
-          description: data.description || null,
-          productIds: Array.isArray(data.productIds) ? data.productIds : [],
-        };
-      });
-
-    const sections: HomepageSection[] = sectionsSnap.docs
-      .filter((d: any) => d.data().isActive === true)
-      .map((d: any) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          type: data.type || "",
-          title: data.title || null,
-          subtitle: data.subtitle || null,
-          sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
-          config: data.config || {},
-          categoryIds: Array.isArray(data.categoryIds) ? data.categoryIds : [],
-        };
-      });
-
-    return { sections, banners, products, categories, collections };
-  } catch (error) {
-    console.error("Failed to fetch homepage data during build/render:", error);
-    // Safe fallback so the page doesn't crash if the database is unreachable
-    return {
-      sections: [] as HomepageSection[],
-      banners: {} as Record<string, Banner>,
-      products: [] as Product[],
-      categories: [] as Category[],
-      collections: [] as Collection[],
-    };
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +301,9 @@ function PromoStripSection({
           <h3 className="font-display text-2xl sm:text-3xl uppercase tracking-wide text-white">
             {title}
           </h3>
-          {subtitle && <p className="text-white/90 text-sm mt-1">{subtitle}</p>}
+          {subtitle && (
+            <p className="text-white/90 text-sm mt-1">{subtitle}</p>
+          )}
         </div>
         <Link
           href={ctaUrl}
@@ -536,90 +431,124 @@ function BrandStorySection({ section }: { section: HomepageSection }) {
   );
 }
 
-function SectionRenderer({
-  section,
-  data,
-}: {
-  section: HomepageSection;
-  data: Awaited<ReturnType<typeof getHomepageData>>;
-}) {
-  switch (section.type) {
-    case "hero": {
-      const bannerId = section.config?.bannerId;
-      return (
-        <HeroSection
-          section={section}
-          banner={bannerId ? data.banners[bannerId] : undefined}
-        />
-      );
+// ---------------------------------------------------------------------------
+// Page Component
+// ---------------------------------------------------------------------------
+
+export default function StorefrontHomePage() {
+  const [data, setData] = useState<HomepageData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [
+          sectionsSnap,
+          bannersSnap,
+          productsSnap,
+          categoriesSnap,
+          collectionsSnap,
+        ] = await Promise.all([
+          getDocs(query(collection(db, "homepageSections"), orderBy("sortOrder", "asc"))),
+          getDocs(query(collection(db, "banners"), orderBy("sortOrder", "asc"))),
+          getDocs(query(collection(db, "products"), orderBy("createdAt", "desc"), limit(48))),
+          getDocs(query(collection(db, "categories"), orderBy("sortOrder", "asc"))),
+          getDocs(query(collection(db, "collections"), orderBy("sortOrder", "asc"))),
+        ]);
+
+        const banners: Record<string, Banner> = {};
+        bannersSnap.docs.forEach((d) => {
+          const bData = d.data();
+          if (bData.isActive === false) return;
+          banners[d.id] = {
+            id: d.id,
+            title: bData.title || "",
+            subtitle: bData.subtitle || null,
+            imageUrl: bData.imageUrl || "",
+            ctaLabel: bData.ctaLabel || null,
+            ctaUrl: bData.ctaUrl || null,
+            placement: bData.placement || "",
+          };
+        });
+
+        const products: Product[] = productsSnap.docs
+          .filter((d) => d.data().status === "active")
+          .map((d) => {
+            const pData = d.data();
+            return {
+              id: d.id,
+              name: pData.name || "",
+              slug: pData.slug || d.id,
+              basePricePaise: typeof pData.basePricePaise === "number" ? pData.basePricePaise : 0,
+              mrpPaise: typeof pData.mrpPaise === "number" ? pData.mrpPaise : 0,
+              images: Array.isArray(pData.images) ? pData.images : [],
+              categoryId: pData.categoryId || "",
+            };
+          });
+
+        const categories: Category[] = categoriesSnap.docs
+          .filter((d) => d.data().status === "active")
+          .map((d) => {
+            const cData = d.data();
+            return {
+              id: d.id,
+              name: cData.name || "",
+              slug: cData.slug || d.id,
+              image: cData.image || null,
+              description: cData.description || null,
+            };
+          });
+
+        const collections: Collection[] = collectionsSnap.docs
+          .filter((d) => d.data().status === "active")
+          .map((d) => {
+            const cData = d.data();
+            return {
+              id: d.id,
+              name: cData.name || "",
+              slug: cData.slug || d.id,
+              image: cData.image || null,
+              description: cData.description || null,
+              productIds: Array.isArray(cData.productIds) ? cData.productIds : [],
+            };
+          });
+
+        const sections: HomepageSection[] = sectionsSnap.docs
+          .filter((d) => d.data().isActive === true)
+          .map((d) => {
+            const sData = d.data();
+            return {
+              id: d.id,
+              type: sData.type || "",
+              title: sData.title || null,
+              subtitle: sData.subtitle || null,
+              sortOrder: typeof sData.sortOrder === "number" ? sData.sortOrder : 0,
+              config: sData.config || {},
+              categoryIds: Array.isArray(sData.categoryIds) ? sData.categoryIds : [],
+            };
+          });
+
+        setData({ sections, banners, products, categories, collections });
+      } catch (error) {
+        console.error("Failed to load storefront data:", error);
+        setData({ sections: [], banners: {}, products: [], categories: [], collections: [] });
+      } finally {
+        setLoading(false);
+      }
     }
 
-    case "promo_strip": {
-      const bannerId = section.config?.bannerId;
-      return (
-        <PromoStripSection
-          section={section}
-          banner={bannerId ? data.banners[bannerId] : undefined}
-        />
-      );
-    }
+    fetchData();
+  }, []);
 
-    case "featured_products": {
-      const limit = Number(section.config?.limit) || 8;
-      return (
-        <ProductGrid
-          eyebrow="Featured"
-          title={section.title || "Featured products"}
-          subtitle={section.subtitle}
-          products={data.products.slice(0, limit)}
-          href="/products"
-        />
-      );
-    }
-
-    case "bestsellers": {
-      const limit = Number(section.config?.limit) || 8;
-      return (
-        <ProductGrid
-          eyebrow="Top picks"
-          title={section.title || "Bestsellers"}
-          subtitle={section.subtitle}
-          products={data.products.slice(0, limit)}
-          href="/products"
-        />
-      );
-    }
-
-    case "category_grid":
-      return (
-        <CategoryGridSection section={section} categories={data.categories} />
-      );
-
-    case "collection":
-      return (
-        <CollectionSection
-          section={section}
-          collections={data.collections}
-          products={data.products}
-        />
-      );
-
-    case "brand_story":
-      return <BrandStorySection section={section} />;
-
-    default:
-      return null;
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+      </div>
+    );
   }
-}
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-export default async function StorefrontHomePage() {
-  const data = await getHomepageData();
-
-  if (data.sections.length === 0) {
+  if (!data || data.sections.length === 0) {
     return (
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
         <h1 className="font-display text-4xl sm:text-5xl uppercase tracking-wide text-neutral-900">
@@ -640,9 +569,77 @@ export default async function StorefrontHomePage() {
 
   return (
     <>
-      {data.sections.map((section) => (
-        <SectionRenderer key={section.id} section={section} data={data} />
-      ))}
+      {data.sections.map((section) => {
+        switch (section.type) {
+          case "hero": {
+            const bannerId = section.config?.bannerId;
+            return (
+              <HeroSection
+                key={section.id}
+                section={section}
+                banner={bannerId ? data.banners[bannerId] : undefined}
+              />
+            );
+          }
+          case "promo_strip": {
+            const bannerId = section.config?.bannerId;
+            return (
+              <PromoStripSection
+                key={section.id}
+                section={section}
+                banner={bannerId ? data.banners[bannerId] : undefined}
+              />
+            );
+          }
+          case "featured_products": {
+            const limit = Number(section.config?.limit) || 8;
+            return (
+              <ProductGrid
+                key={section.id}
+                eyebrow="Featured"
+                title={section.title || "Featured products"}
+                subtitle={section.subtitle}
+                products={data.products.slice(0, limit)}
+                href="/products"
+              />
+            );
+          }
+          case "bestsellers": {
+            const limit = Number(section.config?.limit) || 8;
+            return (
+              <ProductGrid
+                key={section.id}
+                eyebrow="Top picks"
+                title={section.title || "Bestsellers"}
+                subtitle={section.subtitle}
+                products={data.products.slice(0, limit)}
+                href="/products"
+              />
+            );
+          }
+          case "category_grid":
+            return (
+              <CategoryGridSection
+                key={section.id}
+                section={section}
+                categories={data.categories}
+              />
+            );
+          case "collection":
+            return (
+              <CollectionSection
+                key={section.id}
+                section={section}
+                collections={data.collections}
+                products={data.products}
+              />
+            );
+          case "brand_story":
+            return <BrandStorySection key={section.id} section={section} />;
+          default:
+            return null;
+        }
+      })}
 
       <section className="bg-neutral-950 py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
