@@ -1,10 +1,10 @@
 // app/(storefront)/_components/header.tsx
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { Menu, Search, ShoppingBag, User, X } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 const NAV = [
   { href: "/products", label: "Shop" },
@@ -56,7 +56,8 @@ export function StorefrontHeader() {
           {/* Center: desktop nav */}
           <nav className="hidden lg:flex items-center gap-8">
             {NAV.map((n) => {
-              const active = pathname === n.href || pathname.startsWith(n.href + "/");
+              const active =
+                pathname === n.href || pathname.startsWith(n.href + "/");
               return (
                 <Link
                   key={n.href}
