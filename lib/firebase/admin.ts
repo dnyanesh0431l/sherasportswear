@@ -2,11 +2,11 @@
 import "server-only";
 
 import {
-  App,
   applicationDefault,
   cert,
   getApps,
   initializeApp,
+  App,
 } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
@@ -31,10 +31,7 @@ function initAdmin(): App {
         }),
       });
     } catch (error) {
-      console.error(
-        "Failed to init from FIREBASE_SERVICE_ACCOUNT_JSON:",
-        error,
-      );
+      console.error("Failed to init from FIREBASE_SERVICE_ACCOUNT_JSON:", error);
     }
   }
 
@@ -42,11 +39,10 @@ function initAdmin(): App {
   const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credentialsPath) {
     const resolvedPath = path.resolve(credentialsPath);
+    // Only check for file if we are NOT on Vercel
     if (!process.env.VERCEL && fs.existsSync(resolvedPath)) {
       try {
-        const serviceAccount = JSON.parse(
-          fs.readFileSync(resolvedPath, "utf8"),
-        );
+        const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
         return initializeApp({
           credential: cert({
             projectId: serviceAccount.project_id,
@@ -72,7 +68,6 @@ function initAdmin(): App {
 
 const adminApp = initAdmin();
 
-// Export as instances (not functions) so TypeScript works perfectly
 export const adminDb = getFirestore(adminApp);
 export const adminAuth = getAuth(adminApp);
 export { adminApp };

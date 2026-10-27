@@ -1,8 +1,8 @@
 // app/(storefront)/page.tsx
 import { ArrowRight, Tag } from "lucide-react";
 import type { Metadata } from "next";
-import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
+import { unstable_noStore as noStore } from "next/cache";
 import { adminDb } from "../../lib/firebase/admin";
 
 export const metadata: Metadata = {
@@ -76,12 +76,15 @@ function discountPercent(mrp: number, price: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Data fetching
+// Data fetching (SAFE VERSION)
 // ---------------------------------------------------------------------------
 
 async function getHomepageData() {
+  // CRITICAL FIX: Call noStore() BEFORE the try/catch block.
+  // This tells Next.js to opt out of prerendering before we catch any errors.
+  noStore();
+
   try {
-    // Correctly assign the Firestore instance
     const db = adminDb;
 
     const [
@@ -406,7 +409,9 @@ function PromoStripSection({
           <h3 className="font-display text-2xl sm:text-3xl uppercase tracking-wide text-white">
             {title}
           </h3>
-          {subtitle && <p className="text-white/90 text-sm mt-1">{subtitle}</p>}
+          {subtitle && (
+            <p className="text-white/90 text-sm mt-1">{subtitle}</p>
+          )}
         </div>
         <Link
           href={ctaUrl}
@@ -615,9 +620,6 @@ function SectionRenderer({
 // ---------------------------------------------------------------------------
 
 export default async function StorefrontHomePage() {
-  // Opt out of static generation safely
-  noStore();
-
   const data = await getHomepageData();
 
   if (data.sections.length === 0) {
@@ -645,7 +647,6 @@ export default async function StorefrontHomePage() {
         <SectionRenderer key={section.id} section={section} data={data} />
       ))}
 
-      {/* Newsletter */}
       <section className="bg-neutral-950 py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-500 mb-3">
