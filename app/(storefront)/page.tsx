@@ -2,8 +2,11 @@
 import { ArrowRight, Tag } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_noStore as noStore } from "next/cache";
 import { adminDb } from "../../lib/firebase/admin";
+
+// ✅ Force dynamic rendering at the route level
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
@@ -76,14 +79,10 @@ function discountPercent(mrp: number, price: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Data fetching (SAFE VERSION)
+// Data fetching
 // ---------------------------------------------------------------------------
 
 async function getHomepageData() {
-  // CRITICAL FIX: Call noStore() BEFORE the try/catch block.
-  // This tells Next.js to opt out of prerendering before we catch any errors.
-  noStore();
-
   try {
     const db = adminDb;
 
@@ -102,7 +101,7 @@ async function getHomepageData() {
     ]);
 
     const banners: Record<string, Banner> = {};
-    bannersSnap.docs.forEach((d) => {
+    bannersSnap.docs.forEach((d: any) => {
       const data = d.data();
       if (data.isActive === false) return;
       banners[d.id] = {
@@ -117,8 +116,8 @@ async function getHomepageData() {
     });
 
     const products: Product[] = productsSnap.docs
-      .filter((d) => d.data().status === "active")
-      .map((d) => {
+      .filter((d: any) => d.data().status === "active")
+      .map((d: any) => {
         const data = d.data();
         return {
           id: d.id,
@@ -133,8 +132,8 @@ async function getHomepageData() {
       });
 
     const categories: Category[] = categoriesSnap.docs
-      .filter((d) => d.data().status === "active")
-      .map((d) => {
+      .filter((d: any) => d.data().status === "active")
+      .map((d: any) => {
         const data = d.data();
         return {
           id: d.id,
@@ -146,8 +145,8 @@ async function getHomepageData() {
       });
 
     const collections: Collection[] = collectionsSnap.docs
-      .filter((d) => d.data().status === "active")
-      .map((d) => {
+      .filter((d: any) => d.data().status === "active")
+      .map((d: any) => {
         const data = d.data();
         return {
           id: d.id,
@@ -160,8 +159,8 @@ async function getHomepageData() {
       });
 
     const sections: HomepageSection[] = sectionsSnap.docs
-      .filter((d) => d.data().isActive === true)
-      .map((d) => {
+      .filter((d: any) => d.data().isActive === true)
+      .map((d: any) => {
         const data = d.data();
         return {
           id: d.id,
@@ -177,7 +176,7 @@ async function getHomepageData() {
     return { sections, banners, products, categories, collections };
   } catch (error) {
     console.error("Failed to fetch homepage data during build/render:", error);
-    // Safe fallback so the page doesn't crash
+    // Safe fallback so the page doesn't crash if the database is unreachable
     return {
       sections: [] as HomepageSection[],
       banners: {} as Record<string, Banner>,
@@ -409,9 +408,7 @@ function PromoStripSection({
           <h3 className="font-display text-2xl sm:text-3xl uppercase tracking-wide text-white">
             {title}
           </h3>
-          {subtitle && (
-            <p className="text-white/90 text-sm mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-white/90 text-sm mt-1">{subtitle}</p>}
         </div>
         <Link
           href={ctaUrl}
