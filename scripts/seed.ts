@@ -5,7 +5,13 @@
 //   - GOOGLE_APPLICATION_CREDENTIALS pointing to a service account JSON, OR
 //   - FIREBASE_SERVICE_ACCOUNT_JSON containing the raw JSON string.
 //
-// Creates/updates demo catalog + CMS content and a default admin user.
+// Seeds catalog + CMS + customers + carts + orders + payments + shipments.
+// WARNING: This wipes orders, carts, payments, idempotencyKeys and every
+//          users/{uid}/addresses & users/{uid}/wishlist before recreating them.
+//
+// Default logins:
+//   Admin:    dhakanearvind900@gmail.com / admin@123
+//   Customer: any seeded customer email / Customer@123
 
 import {
   applicationDefault,
@@ -14,28 +20,33 @@ import {
   initializeApp,
 } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import {
+  CollectionReference,
+  FieldValue,
+  Timestamp,
+  getFirestore,
+} from "firebase-admin/firestore";
 import * as fs from "fs";
 
 // ---------------------------------------------------------------------------
-// Default admin credentials — CHANGE THE PASSWORD AFTER FIRST LOGIN.
+// Config
 // ---------------------------------------------------------------------------
-const ADMIN_EMAIL = "admin@sherasportswear.com";
-const ADMIN_PASSWORD = "Shera@Admin2024!";
+const ADMIN_EMAIL = "dhakanearvind900@gmail.com";
+const ADMIN_PASSWORD = "admin@123";
 const ADMIN_DISPLAY_NAME = "Shera Admin";
+const CUSTOMER_PASSWORD = "Customer@123";
+const LEGACY_ADMIN_EMAIL = "admin@sherasportswear.com";
 
 // ---------------------------------------------------------------------------
 // Firebase Admin init
 // ---------------------------------------------------------------------------
 function initAdmin() {
   if (getApps().length) return;
-
   const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (jsonEnv) {
     initializeApp({ credential: cert(JSON.parse(jsonEnv)) });
     return;
   }
-
   const path = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (path && fs.existsSync(path)) {
     initializeApp({
@@ -43,20 +54,61 @@ function initAdmin() {
     });
     return;
   }
-
   initializeApp({ credential: applicationDefault() });
 }
-
 initAdmin();
 
 const db = getFirestore();
 db.settings({ ignoreUndefinedProperties: true });
+const auth = getAuth();
 
 const now = () => FieldValue.serverTimestamp();
+const ts = (d: Date) => Timestamp.fromDate(d);
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Utilities
 // ---------------------------------------------------------------------------
+async function ensureAuthUser(
+  email: string,
+  password: string,
+  displayName: string,
+  opts: { forcePassword?: boolean } = {},
+): Promise<string> {
+  try {
+    const u = await auth.getUserByEmail(email);
+    if (opts.forcePassword) {
+      await auth.updateUser(u.uid, { password, displayName });
+    }
+    return u.uid;
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "auth/user-not-found") {
+      const created = await auth.createUser({
+        email,
+        password,
+        displayName,
+        emailVerified: true,
+      });
+      return created.uid;
+    }
+    throw err;
+  }
+}
+
+async function deleteCollectionRecursive(colRef: CollectionReference) {
+  const snap = await colRef.get();
+  for (const doc of snap.docs) {
+    const subs = await doc.ref.listCollections();
+    for (const sub of subs) await deleteCollectionRecursive(sub);
+    await doc.ref.delete();
+  }
+}
+
+async function wipeCollections(paths: string[]) {
+  for (const p of paths) {
+    await deleteCollectionRecursive(db.collection(p));
+  }
+}
 
 async function upsert(
   collectionName: string,
@@ -90,36 +142,67 @@ async function upsertVariant(
   await batch.commit();
 }
 
-async function ensureAdminUser(): Promise<string> {
-  const auth = getAuth();
-  let userRecord;
+// Deterministic RNG so re-seeds are stable
+function mulberry32(seed: number) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(0xc0ffee);
+const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
+const randInt = (min: number, max: number) =>
+  Math.floor(rand() * (max - min + 1)) + min;
+const daysAgo = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d;
+};
+const addDays = (d: Date, n: number) => {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+};
+function weightedPick<T>(items: T[], weights: number[]): T {
+  const r = rand();
+  let cum = 0;
+  for (let i = 0; i < items.length; i++) {
+    cum += weights[i];
+    if (r <= cum) return items[i];
+  }
+  return items[items.length - 1];
+}
 
+// ---------------------------------------------------------------------------
+// Admin user
+// ---------------------------------------------------------------------------
+async function ensureAdminUser(): Promise<string> {
   try {
-    userRecord = await auth.getUserByEmail(ADMIN_EMAIL);
-    console.log(`   Admin user already exists (uid: ${userRecord.uid})`);
+    const legacy = await auth.getUserByEmail(LEGACY_ADMIN_EMAIL);
+    const claims = { ...(legacy.customClaims ?? {}), admin: false };
+    await auth.setCustomUserClaims(legacy.uid, claims);
+    console.log(`   Revoked admin from legacy account ${LEGACY_ADMIN_EMAIL}`);
   } catch (err) {
-    const code = (err as { code?: string })?.code;
-    if (code === "auth/user-not-found") {
-      userRecord = await auth.createUser({
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
-        displayName: ADMIN_DISPLAY_NAME,
-        emailVerified: true,
-      });
-      console.log(`   Created admin user (uid: ${userRecord.uid})`);
-    } else {
-      throw err;
-    }
+    if ((err as { code?: string })?.code !== "auth/user-not-found") throw err;
   }
 
-  // Always (re)assert the admin claim
-  await auth.setCustomUserClaims(userRecord.uid, { admin: true });
+  const uid = await ensureAuthUser(
+    ADMIN_EMAIL,
+    ADMIN_PASSWORD,
+    ADMIN_DISPLAY_NAME,
+    {
+      forcePassword: true,
+    },
+  );
+  await auth.setCustomUserClaims(uid, { admin: true });
   console.log(`   Admin claim set for ${ADMIN_EMAIL}`);
 
-  // Mirror into users/{uid}
-  await db.collection("users").doc(userRecord.uid).set(
+  await db.collection("users").doc(uid).set(
     {
-      uid: userRecord.uid,
+      uid,
       displayName: ADMIN_DISPLAY_NAME,
       email: ADMIN_EMAIL,
       phone: null,
@@ -132,13 +215,12 @@ async function ensureAdminUser(): Promise<string> {
     { merge: true },
   );
 
-  return userRecord.uid;
+  return uid;
 }
 
 // ---------------------------------------------------------------------------
-// Seed data
+// Catalog data
 // ---------------------------------------------------------------------------
-
 const categories = [
   { id: "men", name: "Men", slug: "men", sortOrder: 1, status: "active" },
   { id: "women", name: "Women", slug: "women", sortOrder: 2, status: "active" },
@@ -262,6 +344,94 @@ const products: SeedProduct[] = [
     sizes: ["6", "7", "8", "9", "10", "11"],
     colors: ["Black", "White"],
   },
+  {
+    id: "shera-compression-tee",
+    name: "Shera Compression Training Tee",
+    slug: "shera-compression-training-tee",
+    description: "Second-skin compression tee engineered for mobility.",
+    productType: "T-Shirt",
+    categoryId: "men",
+    collectionIds: ["training"],
+    basePricePaise: 149900,
+    mrpPaise: 199900,
+    attributes: { fabric: "Elastane Blend", fit: "Compression", gender: "Men" },
+    sizes: ["S", "M", "L", "XL"],
+    colors: ["Black", "Charcoal", "Navy"],
+  },
+  {
+    id: "shera-track-pants",
+    name: "Shera Tapered Track Pants",
+    slug: "shera-tapered-track-pants",
+    description: "Everyday tapered track pants with zip pockets.",
+    productType: "Track Pants",
+    categoryId: "men",
+    collectionIds: ["running"],
+    basePricePaise: 179900,
+    mrpPaise: 249900,
+    attributes: { fabric: "Cotton-Poly", fit: "Tapered", gender: "Men" },
+    sizes: ["S", "M", "L", "XL"],
+    colors: ["Black", "Grey"],
+  },
+  {
+    id: "shera-sports-bra",
+    name: "Shera Support Sports Bra",
+    slug: "shera-support-sports-bra",
+    description: "Medium-support sports bra with removable pads.",
+    productType: "Sports Bra",
+    categoryId: "women",
+    collectionIds: ["training"],
+    basePricePaise: 119900,
+    mrpPaise: 169900,
+    attributes: {
+      fabric: "Nylon-Spandex",
+      support: "Medium",
+      gender: "Women",
+    },
+    sizes: ["XS", "S", "M", "L"],
+    colors: ["Black", "Orange", "White"],
+  },
+  {
+    id: "shera-yoga-top",
+    name: "Shera Flow Yoga Tank",
+    slug: "shera-flow-yoga-tank",
+    description: "Breathable yoga tank with relaxed drape.",
+    productType: "Tank Top",
+    categoryId: "women",
+    collectionIds: ["new-arrivals"],
+    basePricePaise: 109900,
+    mrpPaise: 149900,
+    attributes: { fabric: "Modal Blend", fit: "Relaxed", gender: "Women" },
+    sizes: ["XS", "S", "M", "L"],
+    colors: ["Black", "Teal"],
+  },
+  {
+    id: "shera-training-hoodie",
+    name: "Shera Training Hoodie",
+    slug: "shera-training-hoodie",
+    description: "Midweight fleece hoodie for warm-ups and recovery days.",
+    productType: "Hoodie",
+    categoryId: "men",
+    collectionIds: ["new-arrivals", "training"],
+    basePricePaise: 249900,
+    mrpPaise: 349900,
+    attributes: { fabric: "Cotton Fleece", fit: "Regular", gender: "Unisex" },
+    sizes: ["S", "M", "L", "XL", "XXL"],
+    colors: ["Black", "Charcoal"],
+  },
+  {
+    id: "shera-gym-cap",
+    name: "Shera Performance Cap",
+    slug: "shera-performance-cap",
+    description: "Lightweight training cap with moisture-wicking sweatband.",
+    productType: "Cap",
+    categoryId: "accessories",
+    collectionIds: ["new-arrivals"],
+    basePricePaise: 49900,
+    mrpPaise: 79900,
+    attributes: { fabric: "Polyester", fit: "Adjustable", gender: "Unisex" },
+    sizes: ["One Size"],
+    colors: ["Black", "White"],
+  },
 ];
 
 const banners = [
@@ -285,6 +455,17 @@ const banners = [
     ctaUrl: "/collections/training",
     placement: "home_strip",
     sortOrder: 2,
+    isActive: true,
+  },
+  {
+    id: "strip-running",
+    title: "Run Season",
+    subtitle: "Gear that keeps up with your pace.",
+    imageUrl: IMG("Running Strip"),
+    ctaLabel: "Shop running",
+    ctaUrl: "/collections/running",
+    placement: "home_strip",
+    sortOrder: 3,
     isActive: true,
   },
 ];
@@ -325,15 +506,305 @@ const homepageSections = [
 ];
 
 // ---------------------------------------------------------------------------
+// Customers (dummy)
+// ---------------------------------------------------------------------------
+type SeedAddress = {
+  id: string;
+  label: string;
+  fullName: string;
+  phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  isDefault: boolean;
+};
+type SeedCustomer = {
+  email: string;
+  name: string;
+  phone: string;
+  marketingOptIn: boolean;
+  addresses: SeedAddress[];
+};
+
+const customers: SeedCustomer[] = [
+  {
+    email: "arjun.mehta@example.com",
+    name: "Arjun Mehta",
+    phone: "+919812345001",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Arjun Mehta",
+        phone: "+919812345001",
+        line1: "12, Rose Villa",
+        line2: "MG Road",
+        city: "Pune",
+        state: "Maharashtra",
+        postalCode: "411001",
+        country: "India",
+        isDefault: true,
+      },
+      {
+        id: "work",
+        label: "Work",
+        fullName: "Arjun Mehta",
+        phone: "+919812345001",
+        line1: "5th Floor, Tech Park",
+        line2: "Hinjewadi Phase 1",
+        city: "Pune",
+        state: "Maharashtra",
+        postalCode: "411057",
+        country: "India",
+        isDefault: false,
+      },
+    ],
+  },
+  {
+    email: "priya.sharma@example.com",
+    name: "Priya Sharma",
+    phone: "+919812345002",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Priya Sharma",
+        phone: "+919812345002",
+        line1: "B-402, Green Heights",
+        line2: "Andheri West",
+        city: "Mumbai",
+        state: "Maharashtra",
+        postalCode: "400053",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "rohan.verma@example.com",
+    name: "Rohan Verma",
+    phone: "+919812345003",
+    marketingOptIn: false,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Rohan Verma",
+        phone: "+919812345003",
+        line1: "H-14, Hauz Khas",
+        line2: "Near Deer Park",
+        city: "New Delhi",
+        state: "Delhi",
+        postalCode: "110016",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "ananya.iyer@example.com",
+    name: "Ananya Iyer",
+    phone: "+919812345004",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Ananya Iyer",
+        phone: "+919812345004",
+        line1: "47, 4th Cross, Indiranagar",
+        line2: "100 Ft Road",
+        city: "Bengaluru",
+        state: "Karnataka",
+        postalCode: "560038",
+        country: "India",
+        isDefault: true,
+      },
+      {
+        id: "work",
+        label: "Work",
+        fullName: "Ananya Iyer",
+        phone: "+919812345004",
+        line1: "WeWork Galaxy",
+        line2: "Residency Road",
+        city: "Bengaluru",
+        state: "Karnataka",
+        postalCode: "560025",
+        country: "India",
+        isDefault: false,
+      },
+    ],
+  },
+  {
+    email: "karan.singh@example.com",
+    name: "Karan Singh",
+    phone: "+919812345005",
+    marketingOptIn: false,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Karan Singh",
+        phone: "+919812345005",
+        line1: "House 22, Sector 15",
+        line2: "Near Market",
+        city: "Chandigarh",
+        state: "Chandigarh",
+        postalCode: "160015",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "neha.patel@example.com",
+    name: "Neha Patel",
+    phone: "+919812345006",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Neha Patel",
+        phone: "+919812345006",
+        line1: "A-9, Satellite Road",
+        line2: "Jodhpur Char Rasta",
+        city: "Ahmedabad",
+        state: "Gujarat",
+        postalCode: "380015",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "vikram.rao@example.com",
+    name: "Vikram Rao",
+    phone: "+919812345007",
+    marketingOptIn: false,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Vikram Rao",
+        phone: "+919812345007",
+        line1: "Flat 304, My Home Jewel",
+        line2: "Madhapur",
+        city: "Hyderabad",
+        state: "Telangana",
+        postalCode: "500081",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "sneha.nair@example.com",
+    name: "Sneha Nair",
+    phone: "+919812345008",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Sneha Nair",
+        phone: "+919812345008",
+        line1: "Puthiya Road, Kaloor",
+        line2: "Near Metro Station",
+        city: "Kochi",
+        state: "Kerala",
+        postalCode: "682017",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "aditya.kapoor@example.com",
+    name: "Aditya Kapoor",
+    phone: "+919812345009",
+    marketingOptIn: false,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Aditya Kapoor",
+        phone: "+919812345009",
+        line1: "Tower B, DLF Phase 2",
+        line2: "Golf Course Road",
+        city: "Gurugram",
+        state: "Haryana",
+        postalCode: "122002",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+  {
+    email: "rhea.malhotra@example.com",
+    name: "Rhea Malhotra",
+    phone: "+919812345010",
+    marketingOptIn: true,
+    addresses: [
+      {
+        id: "home",
+        label: "Home",
+        fullName: "Rhea Malhotra",
+        phone: "+919812345010",
+        line1: "C-56, Malviya Nagar",
+        line2: "Near Metro",
+        city: "Jaipur",
+        state: "Rajasthan",
+        postalCode: "302017",
+        country: "India",
+        isDefault: true,
+      },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Variant helper type
+// ---------------------------------------------------------------------------
+type VariantInfo = {
+  productId: string;
+  variantId: string;
+  sku: string;
+  name: string;
+  size: string;
+  color: string;
+  pricePaise: number;
+  mrpPaise: number;
+  imageUrl: string;
+};
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-
 async function main() {
-  console.log("Seeding admin user…");
+  console.log("🌱 Shera Sports Wear — full reseed\n");
+
+  console.log("👤 Ensuring admin user…");
   const adminUid = await ensureAdminUser();
   console.log(`   Admin UID: ${adminUid}\n`);
 
-  console.log("Seeding categories…");
+  console.log(
+    "🧹 Wiping previous seed data (orders, carts, payments, addresses, wishlists)…",
+  );
+  await wipeCollections(["orders", "carts", "payments", "idempotencyKeys"]);
+  const allUsers = await db.collection("users").get();
+  for (const u of allUsers.docs) {
+    await deleteCollectionRecursive(u.ref.collection("addresses"));
+    await deleteCollectionRecursive(u.ref.collection("wishlist"));
+  }
+  console.log("   Done.\n");
+
+  console.log("📂 Seeding categories…");
   await upsert(
     "categories",
     categories.map((c) => ({
@@ -348,7 +819,7 @@ async function main() {
     })),
   );
 
-  console.log("Seeding collections…");
+  console.log("📂 Seeding collections…");
   await upsert(
     "collections",
     collections.map((c) => ({
@@ -363,16 +834,18 @@ async function main() {
     })),
   );
 
-  console.log("Seeding products & variants…");
+  console.log("\n👕 Seeding products & variants…");
+  const variantPool: VariantInfo[] = [];
   for (const p of products) {
     const { sizes, colors, ...rest } = p;
+    const imageUrl = IMG(p.name);
     await db
       .collection("products")
       .doc(p.id)
       .set(
         {
           ...rest,
-          images: [IMG(p.name), IMG(p.name + " 2")],
+          images: [imageUrl, IMG(p.name + " 2")],
           status: "active",
           brand: "Shera Sports Wear",
           shortDescription: p.description.slice(0, 80),
@@ -388,12 +861,13 @@ async function main() {
     for (const size of sizes) {
       for (const color of colors) {
         const variantId = `${size}-${color}`.replace(/\s+/g, "-").toLowerCase();
+        const sku = `SHERA-${p.id}-${size}-${color}`
+          .toUpperCase()
+          .replace(/\s+/g, "");
         variants.push({
           id: variantId,
           data: {
-            sku: `SHERA-${p.id}-${size}-${color}`
-              .toUpperCase()
-              .replace(/\s+/g, ""),
+            sku,
             size,
             color,
             pricePaise: p.basePricePaise,
@@ -405,13 +879,24 @@ async function main() {
             updatedAt: now(),
           },
         });
+        variantPool.push({
+          productId: p.id,
+          variantId,
+          sku,
+          name: p.name,
+          size,
+          color,
+          pricePaise: p.basePricePaise,
+          mrpPaise: p.mrpPaise,
+          imageUrl,
+        });
       }
     }
     await upsertVariant(p.id, variants);
     console.log(`   ${p.name} (${variants.length} variants)`);
   }
 
-  console.log("Seeding banners…");
+  console.log("\n🖼  Seeding banners…");
   await upsert(
     "banners",
     banners.map((b) => ({
@@ -426,7 +911,7 @@ async function main() {
     })),
   );
 
-  console.log("Seeding homepage sections…");
+  console.log("🖼  Seeding homepage sections…");
   await upsert(
     "homepageSections",
     homepageSections.map((s) => ({
@@ -435,12 +920,390 @@ async function main() {
     })),
   );
 
-  console.log("\n✅ Seed complete.");
-  console.log("\nAdmin login:");
-  console.log(`  Email:    ${ADMIN_EMAIL}`);
-  console.log(`  Password: ${ADMIN_PASSWORD}`);
-  console.log("  URL:      /login  →  /admin\n");
-  console.log("⚠️  Change the default password after first login.\n");
+  // ------------------ Customers ------------------
+  console.log("\n👥 Seeding customers…");
+  type CustomerRecord = SeedCustomer & { uid: string };
+  const customerRecords: CustomerRecord[] = [];
+
+  for (const c of customers) {
+    const uid = await ensureAuthUser(c.email, CUSTOMER_PASSWORD, c.name);
+    const defaultAddressId =
+      c.addresses.find((a) => a.isDefault)?.id ?? c.addresses[0]?.id ?? null;
+
+    await db.collection("users").doc(uid).set(
+      {
+        uid,
+        displayName: c.name,
+        email: c.email,
+        phone: c.phone,
+        photoURL: null,
+        marketingOptIn: c.marketingOptIn,
+        defaultAddressId,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      { merge: true },
+    );
+
+    for (const a of c.addresses) {
+      await db
+        .collection("users")
+        .doc(uid)
+        .collection("addresses")
+        .doc(a.id)
+        .set({ ...a, createdAt: now(), updatedAt: now() });
+    }
+
+    // Wishlist container
+    await db
+      .collection("users")
+      .doc(uid)
+      .collection("wishlist")
+      .doc(uid)
+      .set({ uid, createdAt: now(), updatedAt: now() }, { merge: true });
+
+    const wishCount = randInt(0, 3);
+    const wishProductIds = new Set<string>();
+    while (wishProductIds.size < wishCount) {
+      wishProductIds.add(pick(variantPool).productId);
+    }
+    for (const pid of wishProductIds) {
+      await db
+        .collection("users")
+        .doc(uid)
+        .collection("wishlist")
+        .doc(uid)
+        .collection("items")
+        .doc(pid)
+        .set({
+          productId: pid,
+          variantId: null,
+          addedAt: ts(daysAgo(randInt(1, 45))),
+        });
+    }
+
+    customerRecords.push({ ...c, uid });
+    console.log(
+      `   ${c.name} → ${uid} (${c.addresses.length} address${
+        c.addresses.length !== 1 ? "es" : ""
+      }, ${wishProductIds.size} wishlist)`,
+    );
+  }
+
+  // ------------------ Carts ------------------
+  console.log("\n🛒 Seeding carts…");
+  type CartSpec = {
+    cartId: string;
+    ownerUid: string | null;
+    guestId: string | null;
+    status: string;
+    items: VariantInfo[];
+  };
+  const cartSpecs: CartSpec[] = [];
+  const buildCartItems = (count: number): VariantInfo[] => {
+    const out: VariantInfo[] = [];
+    const used = new Set<string>();
+    while (out.length < count) {
+      const v = pick(variantPool);
+      if (used.has(v.variantId)) continue;
+      used.add(v.variantId);
+      out.push(v);
+    }
+    return out;
+  };
+
+  for (let i = 0; i < 4; i++) {
+    cartSpecs.push({
+      cartId: `cart_active_${i + 1}`,
+      ownerUid: customerRecords[i].uid,
+      guestId: null,
+      status: "active",
+      items: buildCartItems(randInt(1, 3)),
+    });
+  }
+  for (let i = 0; i < 2; i++) {
+    cartSpecs.push({
+      cartId: `cart_abandoned_${i + 1}`,
+      ownerUid: customerRecords[4 + i].uid,
+      guestId: null,
+      status: "abandoned",
+      items: buildCartItems(randInt(1, 2)),
+    });
+  }
+  for (let i = 0; i < 3; i++) {
+    cartSpecs.push({
+      cartId: `cart_guest_${i + 1}`,
+      ownerUid: null,
+      guestId: `guest_${randInt(100000, 999999)}`,
+      status: "active",
+      items: buildCartItems(randInt(1, 2)),
+    });
+  }
+
+  for (const c of cartSpecs) {
+    const createdAt = daysAgo(randInt(0, 5));
+    await db
+      .collection("carts")
+      .doc(c.cartId)
+      .set({
+        cartId: c.cartId,
+        ownerUid: c.ownerUid,
+        guestId: c.guestId,
+        status: c.status,
+        currency: "INR",
+        createdAt: ts(createdAt),
+        updatedAt: ts(createdAt),
+        expiresAt: c.guestId ? ts(addDays(createdAt, 14)) : null,
+      });
+    for (const v of c.items) {
+      const itemId = v.variantId;
+      await db
+        .collection("carts")
+        .doc(c.cartId)
+        .collection("items")
+        .doc(itemId)
+        .set({
+          itemId,
+          productId: v.productId,
+          variantId: v.variantId,
+          quantity: randInt(1, 2),
+          addedAt: ts(createdAt),
+          updatedAt: ts(createdAt),
+        });
+    }
+    console.log(`   ${c.cartId} (${c.status}, ${c.items.length} items)`);
+  }
+
+  // ------------------ Orders / Payments / Shipments ------------------
+  console.log("\n🧾 Seeding orders + payments + shipments…");
+  const ORDER_COUNT = 25;
+  const statuses = [
+    "delivered",
+    "shipped",
+    "processing",
+    "confirmed",
+    "pending",
+    "cancelled",
+  ];
+  const statusWeights = [0.4, 0.2, 0.1, 0.1, 0.1, 0.1];
+
+  for (let i = 0; i < ORDER_COUNT; i++) {
+    const orderId = `SHE-${10001 + i}`;
+    const orderNumber = orderId;
+    const customer = customerRecords[i % customerRecords.length];
+    const status = weightedPick(statuses, statusWeights);
+
+    let daysBack: number;
+    switch (status) {
+      case "delivered":
+        daysBack = randInt(15, 60);
+        break;
+      case "shipped":
+        daysBack = randInt(4, 10);
+        break;
+      case "processing":
+        daysBack = randInt(1, 3);
+        break;
+      case "confirmed":
+        daysBack = randInt(0, 2);
+        break;
+      case "pending":
+        daysBack = randInt(0, 1);
+        break;
+      case "cancelled":
+        daysBack = randInt(4, 45);
+        break;
+      default:
+        daysBack = randInt(1, 30);
+    }
+    const orderDate = daysAgo(daysBack);
+
+    // Address snapshot
+    const addr =
+      customer.addresses.find((a) => a.isDefault) ?? customer.addresses[0];
+    const addressSnapshot = {
+      fullName: addr.fullName,
+      phone: addr.phone,
+      line1: addr.line1,
+      line2: addr.line2,
+      city: addr.city,
+      state: addr.state,
+      postalCode: addr.postalCode,
+      country: addr.country,
+      label: addr.label,
+    };
+
+    // Line-item snapshots
+    const items: any[] = [];
+    const used = new Set<string>();
+    const itemCount = randInt(1, 3);
+    while (items.length < itemCount) {
+      const v = pick(variantPool);
+      if (used.has(v.variantId)) continue;
+      used.add(v.variantId);
+      const qty = randInt(1, 2);
+      items.push({
+        productId: v.productId,
+        variantId: v.variantId,
+        sku: v.sku,
+        name: v.name,
+        variantLabel: `${v.size} / ${v.color}`,
+        size: v.size,
+        color: v.color,
+        quantity: qty,
+        unitPricePaise: v.pricePaise,
+        mrpPaise: v.mrpPaise,
+        lineTotalPaise: v.pricePaise * qty,
+        imageUrl: v.imageUrl,
+      });
+    }
+
+    const subtotalPaise = items.reduce((s, it) => s + it.lineTotalPaise, 0);
+    const discountPaise = rand() < 0.3 ? Math.round(subtotalPaise * 0.1) : 0;
+    const shippingPaise = subtotalPaise - discountPaise >= 99900 ? 0 : 4900;
+    const taxPaise = Math.round((subtotalPaise - discountPaise) * 0.05);
+    const totalPaise = subtotalPaise - discountPaise + shippingPaise + taxPaise;
+
+    const provider = rand() < 0.65 ? "razorpay" : "cod";
+
+    let paymentStatus: string;
+    if (status === "cancelled") paymentStatus = "refunded";
+    else if (status === "pending") paymentStatus = "pending";
+    else if (provider === "cod")
+      paymentStatus = status === "delivered" ? "captured" : "pending";
+    else paymentStatus = "captured";
+
+    const fulfillmentStatus =
+      status === "delivered" || status === "shipped"
+        ? "fulfilled"
+        : status === "cancelled"
+          ? "cancelled"
+          : "unfulfilled";
+
+    const paymentId = `pay_${orderId}`;
+    const idempotencyKey = `idem_${orderId}`;
+    const lastUpdated =
+      status === "delivered" ? addDays(orderDate, randInt(3, 6)) : orderDate;
+
+    // Order
+    await db
+      .collection("orders")
+      .doc(orderId)
+      .set({
+        orderId,
+        orderNumber,
+        userId: customer.uid,
+        email: customer.email,
+        phone: customer.phone,
+        status,
+        paymentStatus,
+        fulfillmentStatus,
+        currency: "INR",
+        items,
+        shippingAddress: addressSnapshot,
+        billingAddress: addressSnapshot,
+        subtotalPaise,
+        discountPaise,
+        shippingPaise,
+        taxPaise,
+        totalPaise,
+        paymentId,
+        idempotencyKey,
+        createdAt: ts(orderDate),
+        updatedAt: ts(lastUpdated),
+      });
+
+    // Payment
+    const rzpId =
+      provider === "razorpay"
+        ? `pay_RZP${randInt(100000000, 999999999)}`
+        : null;
+    const capturedAt = paymentStatus === "captured" ? ts(orderDate) : null;
+    const method =
+      provider === "cod"
+        ? "cod"
+        : pick(["card", "upi", "netbanking", "wallet"]);
+
+    await db
+      .collection("payments")
+      .doc(paymentId)
+      .set({
+        paymentId,
+        orderId,
+        userId: customer.uid,
+        provider,
+        providerPaymentId: rzpId,
+        amountPaise: totalPaise,
+        currency: "INR",
+        status: paymentStatus,
+        method,
+        capturedAt,
+        failureReason: null,
+        createdAt: ts(orderDate),
+        updatedAt: ts(lastUpdated),
+      });
+
+    // Shipment (only for shipped / delivered)
+    if (status === "shipped" || status === "delivered") {
+      const carrier = pick(["Delhivery", "Blue Dart", "Ekart"]);
+      const trackingNumber = `${carrier.slice(0, 2).toUpperCase()}${randInt(
+        100000000,
+        999999999,
+      )}`;
+      const shippedAt = addDays(orderDate, randInt(1, 2));
+      const deliveredAt =
+        status === "delivered" ? addDays(shippedAt, randInt(2, 4)) : null;
+      const shipmentId = `shp_${orderId}`;
+
+      await db
+        .collection("orders")
+        .doc(orderId)
+        .collection("shipments")
+        .doc(shipmentId)
+        .set({
+          shipmentId,
+          orderId,
+          carrier,
+          trackingNumber,
+          trackingUrl: `https://track.example.com/${trackingNumber}`,
+          status: status === "delivered" ? "delivered" : "in_transit",
+          shippedAt: ts(shippedAt),
+          deliveredAt: deliveredAt ? ts(deliveredAt) : null,
+          createdAt: ts(shippedAt),
+          updatedAt: ts(deliveredAt ?? shippedAt),
+        });
+    }
+
+    // Idempotency key
+    await db
+      .collection("idempotencyKeys")
+      .doc(idempotencyKey)
+      .set({
+        key: idempotencyKey,
+        userId: customer.uid,
+        operation: "createOrder",
+        requestHash: randInt(10000000, 99999999).toString(16),
+        orderId,
+        paymentId,
+        status: "completed",
+        createdAt: ts(orderDate),
+        expiresAt: null,
+      });
+
+    console.log(
+      `   ${orderId} · ${customer.name} · ${status} · ₹${(
+        totalPaise / 100
+      ).toFixed(2)} · ${provider}`,
+    );
+  }
+
+  console.log("\n✅ Seed complete.\n");
+  console.log("Logins:");
+  console.log(`  Admin    → ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+  console.log(`  Customer → arjun.mehta@example.com / ${CUSTOMER_PASSWORD}`);
+  console.log(`  Customer → priya.sharma@example.com / ${CUSTOMER_PASSWORD}`);
+  console.log(`  (all seeded customers use password: ${CUSTOMER_PASSWORD})`);
+  console.log("\n⚠️  Change the default admin password after first login.\n");
 }
 
 main().catch((err) => {

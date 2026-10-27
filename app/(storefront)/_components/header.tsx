@@ -1,168 +1,172 @@
-// app/(storefront)/_components/header.tsx
 "use client";
 
-import { Menu, Search, ShoppingBag, User, X } from "lucide-react";
+import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const NAV = [
-  { href: "/products", label: "Shop" },
-  { href: "/categories", label: "Categories" },
-  { href: "/collections", label: "Collections" },
-  { href: "/about", label: "About" },
+  { label: "Men", href: "/categories/men" },
+  { label: "Women", href: "/categories/women" },
+  { label: "Collections", href: "/collections" },
+  { label: "New Arrivals", href: "/collections/new-arrivals" },
+  { label: "Offers", href: "/offers" },
 ];
 
-export function StorefrontHeader() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [query, setQuery] = useState("");
+function Logo() {
+  return (
+    <Link href="/" aria-label="Shera Sports Wear home" className="shrink-0">
+      <span className="block font-display text-[26px] font-black italic leading-none tracking-tighter text-neutral-950 lg:text-[30px]">
+        SHER<span className="text-brand">A</span>
+      </span>
+      <span className="mt-1 block text-[8px] font-semibold uppercase tracking-[0.4em] text-neutral-900">
+        Sports Wear
+      </span>
+    </Link>
+  );
+}
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = query.trim();
-    router.push(q ? `/products?q=${encodeURIComponent(q)}` : "/products");
-  };
+function IconLink({
+  href,
+  label,
+  badge,
+  className = "",
+  children,
+}: {
+  href: string;
+  label: string;
+  badge?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      className={`relative h-10 w-10 place-items-center rounded-full text-neutral-900 transition-colors hover:text-brand ${className || "grid"}`}
+    >
+      {children}
+      {!!badge && (
+        <span className="absolute right-0 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-bold leading-none text-white">
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+// TODO: pass the real cart count from your cart store/context.
+export function StorefrontHeader({ cartCount = 0 }: { cartCount?: number }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-neutral-200">
-      {/* Announcement bar */}
-      <div className="bg-neutral-950 text-white text-[11px] tracking-wider uppercase text-center py-2 px-4">
-        Free shipping on orders over ₹999 · Easy 30-day returns
-      </div>
+    <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:h-[72px] lg:gap-8 lg:px-8">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Open menu"
+          className="-ml-2 grid h-10 w-10 place-items-center rounded-full lg:hidden"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left: mobile menu + logo */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="lg:hidden p-2 -ml-2 text-neutral-700 hover:bg-neutral-100 rounded-md"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <Link href="/" className="flex flex-col leading-none">
-              <span className="font-display text-xl tracking-wider text-neutral-900">
-                SHERA
-              </span>
-              <span className="text-[9px] tracking-[0.3em] text-orange-500 font-semibold">
-                SPORTS WEAR
-              </span>
-            </Link>
+        <Logo />
+
+        <nav aria-label="Main" className="hidden items-center gap-7 lg:flex">
+          {NAV.map((l) => {
+            const active = pathname === l.href;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`text-xs font-semibold transition-colors ${
+                  active ? "text-brand" : "text-neutral-900 hover:text-brand"
+                }`}
+              >
+                {l.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <form action="/products" role="search" className="hidden flex-1 lg:block">
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+            <input
+              type="search"
+              name="q"
+              aria-label="Search products"
+              placeholder="Search for products, categories..."
+              className="h-10 w-full rounded-full bg-neutral-100 pl-10 pr-4 text-xs outline-none placeholder:text-neutral-500 focus:ring-2 focus:ring-brand/30"
+            />
           </div>
+        </form>
 
-          {/* Center: desktop nav */}
-          <nav className="hidden lg:flex items-center gap-8">
-            {NAV.map((n) => {
-              const active =
-                pathname === n.href || pathname.startsWith(n.href + "/");
-              return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className={`text-sm font-medium tracking-wide transition-colors ${
-                    active
-                      ? "text-orange-600"
-                      : "text-neutral-700 hover:text-orange-600"
-                  }`}
-                >
-                  {n.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Right: search + account + cart */}
-          <div className="flex items-center gap-1">
-            {/* Desktop search */}
-            <form
-              onSubmit={handleSearch}
-              className="hidden md:flex items-center gap-1 mr-2 rounded-md border border-neutral-300 px-2.5 py-1.5 bg-neutral-50 focus-within:border-orange-500 focus-within:bg-white transition-colors"
-            >
-              <Search className="h-4 w-4 text-neutral-400" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search products…"
-                className="w-40 lg:w-52 bg-transparent text-sm outline-none placeholder:text-neutral-400"
-              />
-            </form>
-
-            <Link
-              href="/search"
-              className="md:hidden p-2 text-neutral-700 hover:bg-neutral-100 rounded-md"
-              aria-label="Search"
-            >
-              <Search className="h-5 w-5" />
-            </Link>
-            <Link
-              href="/account"
-              className="p-2 text-neutral-700 hover:bg-neutral-100 rounded-md"
-              aria-label="Account"
-            >
-              <User className="h-5 w-5" />
-            </Link>
-            <Link
-              href="/cart"
-              className="relative p-2 text-neutral-700 hover:bg-neutral-100 rounded-md"
-              aria-label="Cart"
-            >
-              <ShoppingBag className="h-5 w-5" />
-            </Link>
-          </div>
+        <div className="ml-auto flex items-center lg:ml-0">
+          <IconLink href="/products" label="Search" className="grid lg:hidden">
+            <Search className="h-5 w-5" />
+          </IconLink>
+          <IconLink href="/account" label="Account" className="hidden lg:grid">
+            <User className="h-5 w-5" />
+          </IconLink>
+          <IconLink href="/wishlist" label="Wishlist">
+            <Heart className="h-5 w-5" />
+          </IconLink>
+          <IconLink href="/cart" label="Cart" badge={cartCount}>
+            <ShoppingCart className="h-5 w-5" />
+          </IconLink>
         </div>
       </div>
 
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
-            onClick={() => setMobileOpen(false)}
+      {open && (
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu"
+        >
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+            className="absolute inset-0 bg-black/50"
           />
-          <div className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden shadow-xl flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-neutral-200">
-              <span className="font-display text-lg tracking-wider">SHERA</span>
+          <aside className="absolute inset-y-0 left-0 w-72 max-w-[85%] bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <Logo />
               <button
-                onClick={() => setMobileOpen(false)}
-                className="p-2 hover:bg-neutral-100 rounded-md"
+                type="button"
+                onClick={() => setOpen(false)}
                 aria-label="Close menu"
+                className="grid h-10 w-10 place-items-center rounded-full"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {NAV.map((n) => (
+            <nav aria-label="Mobile" className="mt-6 divide-y divide-neutral-100">
+              {NAV.map((l) => (
                 <Link
-                  key={n.href}
-                  href={n.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2.5 rounded-md text-sm font-medium text-neutral-800 hover:bg-orange-50 hover:text-orange-600"
+                  key={l.href}
+                  href={l.href}
+                  className="block py-3.5 text-sm font-semibold text-neutral-900 hover:text-brand"
                 >
-                  {n.label}
+                  {l.label}
                 </Link>
               ))}
-              <div className="pt-4 mt-4 border-t border-neutral-200">
-                <Link
-                  href="/account"
-                  onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2.5 rounded-md text-sm font-medium text-neutral-800 hover:bg-orange-50 hover:text-orange-600"
-                >
-                  My Account
-                </Link>
-                <Link
-                  href="/orders"
-                  onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2.5 rounded-md text-sm font-medium text-neutral-800 hover:bg-orange-50 hover:text-orange-600"
-                >
-                  My Orders
-                </Link>
-              </div>
             </nav>
-          </div>
-        </>
+          </aside>
+        </div>
       )}
     </header>
   );
