@@ -3,14 +3,15 @@ import { ArrowRight, Tag } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminDb } from "../../lib/firebase/admin";
-export const dynamic = "force-dynamic";
+
+// Use revalidate instead of dynamic for better Next.js compiler compatibility
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
     "Premium performance sportswear engineered for training, running, and everyday movement.",
 };
-
-// Homepage data changes when admin edits. 60s ISR is a fair trade.
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,100 +78,112 @@ function discountPercent(mrp: number, price: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Data fetching
+// Data fetching (SAFE VERSION)
 // ---------------------------------------------------------------------------
 
 async function getHomepageData() {
-  const db = adminDb;
+  try {
+    const db = adminDb;
 
-  const [
-    sectionsSnap,
-    bannersSnap,
-    productsSnap,
-    categoriesSnap,
-    collectionsSnap,
-  ] = await Promise.all([
-    db.collection("homepageSections").orderBy("sortOrder", "asc").get(),
-    db.collection("banners").orderBy("sortOrder", "asc").get(),
-    db.collection("products").orderBy("createdAt", "desc").limit(48).get(),
-    db.collection("categories").orderBy("sortOrder", "asc").get(),
-    db.collection("collections").orderBy("sortOrder", "asc").get(),
-  ]);
+    const [
+      sectionsSnap,
+      bannersSnap,
+      productsSnap,
+      categoriesSnap,
+      collectionsSnap,
+    ] = await Promise.all([
+      db.collection("homepageSections").orderBy("sortOrder", "asc").get(),
+      db.collection("banners").orderBy("sortOrder", "asc").get(),
+      db.collection("products").orderBy("createdAt", "desc").limit(48).get(),
+      db.collection("categories").orderBy("sortOrder", "asc").get(),
+      db.collection("collections").orderBy("sortOrder", "asc").get(),
+    ]);
 
-  const banners: Record<string, Banner> = {};
-  bannersSnap.docs.forEach((d) => {
-    const data = d.data();
-    if (data.isActive === false) return;
-    banners[d.id] = {
-      id: d.id,
-      title: data.title || "",
-      subtitle: data.subtitle || null,
-      imageUrl: data.imageUrl || "",
-      ctaLabel: data.ctaLabel || null,
-      ctaUrl: data.ctaUrl || null,
-      placement: data.placement || "",
-    };
-  });
-
-  const products: Product[] = productsSnap.docs
-    .filter((d) => d.data().status === "active")
-    .map((d) => {
+    const banners: Record<string, Banner> = {};
+    bannersSnap.docs.forEach((d) => {
       const data = d.data();
-      return {
+      if (data.isActive === false) return;
+      banners[d.id] = {
         id: d.id,
-        name: data.name || "",
-        slug: data.slug || d.id,
-        basePricePaise:
-          typeof data.basePricePaise === "number" ? data.basePricePaise : 0,
-        mrpPaise: typeof data.mrpPaise === "number" ? data.mrpPaise : 0,
-        images: Array.isArray(data.images) ? data.images : [],
-        categoryId: data.categoryId || "",
-      };
-    });
-
-  const categories: Category[] = categoriesSnap.docs
-    .filter((d) => d.data().status === "active")
-    .map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        name: data.name || "",
-        slug: data.slug || d.id,
-        image: data.image || null,
-        description: data.description || null,
-      };
-    });
-
-  const collections: Collection[] = collectionsSnap.docs
-    .filter((d) => d.data().status === "active")
-    .map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        name: data.name || "",
-        slug: data.slug || d.id,
-        image: data.image || null,
-        description: data.description || null,
-        productIds: Array.isArray(data.productIds) ? data.productIds : [],
-      };
-    });
-
-  const sections: HomepageSection[] = sectionsSnap.docs
-    .filter((d) => d.data().isActive === true)
-    .map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        type: data.type || "",
-        title: data.title || null,
+        title: data.title || "",
         subtitle: data.subtitle || null,
-        sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
-        config: data.config || {},
-        categoryIds: Array.isArray(data.categoryIds) ? data.categoryIds : [],
+        imageUrl: data.imageUrl || "",
+        ctaLabel: data.ctaLabel || null,
+        ctaUrl: data.ctaUrl || null,
+        placement: data.placement || "",
       };
     });
 
-  return { sections, banners, products, categories, collections };
+    const products: Product[] = productsSnap.docs
+      .filter((d) => d.data().status === "active")
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || "",
+          slug: data.slug || d.id,
+          basePricePaise:
+            typeof data.basePricePaise === "number" ? data.basePricePaise : 0,
+          mrpPaise: typeof data.mrpPaise === "number" ? data.mrpPaise : 0,
+          images: Array.isArray(data.images) ? data.images : [],
+          categoryId: data.categoryId || "",
+        };
+      });
+
+    const categories: Category[] = categoriesSnap.docs
+      .filter((d) => d.data().status === "active")
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || "",
+          slug: data.slug || d.id,
+          image: data.image || null,
+          description: data.description || null,
+        };
+      });
+
+    const collections: Collection[] = collectionsSnap.docs
+      .filter((d) => d.data().status === "active")
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          name: data.name || "",
+          slug: data.slug || d.id,
+          image: data.image || null,
+          description: data.description || null,
+          productIds: Array.isArray(data.productIds) ? data.productIds : [],
+        };
+      });
+
+    const sections: HomepageSection[] = sectionsSnap.docs
+      .filter((d) => d.data().isActive === true)
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          type: data.type || "",
+          title: data.title || null,
+          subtitle: data.subtitle || null,
+          sortOrder: typeof data.sortOrder === "number" ? data.sortOrder : 0,
+          config: data.config || {},
+          categoryIds: Array.isArray(data.categoryIds) ? data.categoryIds : [],
+        };
+      });
+
+    return { sections, banners, products, categories, collections };
+  } catch (error) {
+    console.error("Failed to fetch homepage data during build/render:", error);
+    // Return empty fallbacks so the build completes successfully
+    return {
+      sections: [] as HomepageSection[],
+      banners: {} as Record<string, Banner>,
+      products: [] as Product[],
+      categories: [] as Category[],
+      collections: [] as Collection[],
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +350,7 @@ function HeroSection({
             src={imageUrl}
             alt=""
             className="absolute inset-0 w-full h-full object-cover opacity-70"
-            priority-fetch="high"
+            fetchPriority="high"
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-black/20" />
@@ -567,8 +580,6 @@ function SectionRenderer({
 
     case "bestsellers": {
       const limit = Number(section.config?.limit) || 8;
-      // Until we track real sales, bestsellers = newest first (same as featured).
-      // Swap in a sales-count query when implemented.
       return (
         <ProductGrid
           eyebrow="Top picks"
@@ -609,7 +620,8 @@ function SectionRenderer({
 export default async function StorefrontHomePage() {
   const data = await getHomepageData();
 
-  // Graceful empty state — happens if admin hasn't created sections yet
+  // Graceful empty state — happens if admin hasn't created sections yet,
+  // OR if the database fetch failed during the build process.
   if (data.sections.length === 0) {
     return (
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
