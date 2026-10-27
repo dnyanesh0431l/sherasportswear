@@ -16,12 +16,12 @@ import {
   Heart,
   Loader2,
   RotateCcw,
-  ShieldCheck,
   Tag,
+  ShieldCheck,
   Truck,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { db } from "../../lib/firebase/client";
 import { useWishlist } from "./../context/wishlist-context";
@@ -29,7 +29,6 @@ import { useWishlist } from "./../context/wishlist-context";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 type Banner = {
   id: string;
   title: string;
@@ -58,7 +57,6 @@ type Category = {
   name: string;
   slug: string;
   image: string | null;
-  description: string | null;
 };
 
 type Collection = {
@@ -69,34 +67,23 @@ type Collection = {
   description: string | null;
 };
 
-type HomepageSection = {
-  id: string;
-  type: string;
-  title: string | null;
-  subtitle: string | null;
-  sortOrder: number;
-  config: Record<string, any>;
-  categoryIds?: string[];
-};
-
-type HomepageData = {
-  sections: HomepageSection[];
-  banners: Record<string, Banner>;
-  products: Product[];
-  categories: Category[];
-  collections: Collection[];
-};
-
 type Slide = Pick<
   Banner,
   "id" | "title" | "subtitle" | "imageUrl" | "ctaLabel" | "ctaUrl"
 >;
 
+// ✅ banners is ALWAYS an array now
+type HomepageData = {
+  banners: Banner[];
+  products: Product[];
+  categories: Category[];
+  collections: Collection[];
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const WRAP = "mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8";
+const WRAP = "mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8";
 
 function formatINR(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
@@ -111,8 +98,9 @@ function splitTitle(title: string): [string, string] {
   const lines = title.split(/\n|\|/).map((s) => s.trim());
   if (lines.length > 1) return [lines[0], lines.slice(1).join(" ")];
   const words = title.trim().split(/\s+/);
-  const k = words.length >= 4 ? 2 : 1;
-  return [words.slice(0, -k).join(" "), words.slice(-k).join(" ")];
+  if (words.length <= 3) return [title, ""];
+  const mid = Math.ceil(words.length / 2);
+  return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
 }
 
 const FEATURES = [
@@ -122,146 +110,104 @@ const FEATURES = [
   { icon: Headphones, title: "Dedicated Support", sub: "We're Here to Help" },
 ];
 
-// Colored swatches map for the dot row (seed uses named colors)
 const COLOR_MAP: Record<string, string> = {
-  black: "#111111",
-  white: "#f7f7f7",
-  orange: "#ff5a1f",
-  charcoal: "#3a3a3a",
-  navy: "#1e2a44",
-  grey: "#9aa0a6",
-  gray: "#9aa0a6",
-  teal: "#0f766e",
+  black: "#111111", white: "#f7f7f7", orange: "#ff5a1f",
+  charcoal: "#3a3a3a", navy: "#1e2a44", grey: "#9aa0a6",
+  gray: "#9aa0a6", teal: "#0f766e",
 };
 function colorHex(name: string): string {
   return COLOR_MAP[name.trim().toLowerCase()] ?? "#d4d4d4";
 }
 
 // ---------------------------------------------------------------------------
-// Hero slider
+// Hero Slider
 // ---------------------------------------------------------------------------
-
 function HeroSlider({ slides }: { slides: Slide[] }) {
   const [index, setIndex] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const count = slides.length;
   const slide = slides[index % Math.max(count, 1)];
+  const [top, accent] = splitTitle(slide?.title || "Gear for a stronger you");
 
   const go = (dir: number) =>
     setIndex((i) => (i + dir + count) % Math.max(count, 1));
 
-  // Auto-advance respecting reduced-motion
-  useEffect(() => {
-    if (count <= 1) return;
-    const reduce = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    if (reduce) return;
-
-    timerRef.current = setInterval(() => {
-      setIndex((i) => (i + 1) % count);
-    }, 6500);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [count]);
-
   if (!slide) return null;
 
-  const [top, accent] = splitTitle(slide.title || "Own Your Grind");
-
   return (
-    <section
-      aria-roledescription="carousel"
-      aria-label="Featured collections"
-      className="relative isolate overflow-hidden bg-neutral-950 text-white"
-    >
+    <section className="relative isolate overflow-hidden bg-neutral-950 text-white min-h-[500px] lg:min-h-[600px] flex items-center">
       {slide.imageUrl && (
         <img
           src={slide.imageUrl}
           alt=""
           fetchPriority="high"
-          className="absolute inset-0 -z-20 h-full w-full object-cover object-[65%_center] sm:object-center"
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-[65%_center] lg:object-center"
         />
       )}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/40 to-black/10 lg:bg-gradient-to-r lg:from-black/85 lg:via-black/45 lg:to-transparent" />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/50 to-black/10 lg:bg-gradient-to-r lg:from-black/90 lg:via-black/60 lg:to-transparent" />
 
-      <div
-        className={`${WRAP} flex min-h-[460px] items-end pb-16 pt-24 lg:min-h-[560px] lg:items-center lg:py-20`}
-      >
-        <div className="max-w-xl animate-fade-up">
-          <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.3em] sm:text-xs">
+      <div className={`${WRAP} relative z-10 w-full py-16`}>
+        <div className="max-w-2xl">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.3em] text-white/80">
             Shera Sports Wear
           </p>
-          <h1 className="font-display text-4xl font-black italic uppercase leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl">
+          <h1 className="font-display text-5xl font-black italic uppercase leading-[0.9] tracking-tight sm:text-6xl lg:text-[5.5rem]">
             {top}
             {top && <br />}
             <span className="text-brand">{accent}</span>
           </h1>
           {slide.subtitle && (
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-white/90 sm:text-base">
+            <p className="mt-5 max-w-md text-sm leading-relaxed text-white/90 sm:text-base font-medium">
               {slide.subtitle}
             </p>
           )}
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
               href={slide.ctaUrl || "/products"}
-              className="inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-8 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-brand-hover"
             >
               {slide.ctaLabel || "Shop Now"} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/collections"
-              className="hidden items-center rounded-md border border-white px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-neutral-900 sm:inline-flex"
+              className="inline-flex items-center rounded-md border-2 border-white/80 px-8 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-colors hover:bg-white hover:text-black"
             >
-              Explore Collections
+              Explore Collection
             </Link>
           </div>
         </div>
       </div>
 
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute right-[7%] top-1/2 hidden -translate-y-1/2 -rotate-12 lg:block"
-      >
-        <p className="text-xl font-semibold italic uppercase leading-snug tracking-wide">
-          Discipline
-          <br />
-          Performance
-          <br />
-          Progress
+      <div className="pointer-events-none absolute right-[10%] top-[40%] hidden -translate-y-1/2 -rotate-12 lg:block z-10">
+        <p className="text-2xl font-bold italic uppercase leading-tight tracking-widest text-white/90 drop-shadow-lg">
+          Discipline<br />Performance<br />Progress
         </p>
-        <span className="mt-2 block h-1 w-44 -rotate-6 rounded-full bg-brand" />
+        <span className="mt-3 block h-1.5 w-48 -rotate-3 rounded-full bg-brand" />
       </div>
 
       {count > 1 && (
         <>
           <button
-            type="button"
             onClick={() => go(-1)}
             aria-label="Previous slide"
-            className="absolute left-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 transition-colors hover:bg-black/70 md:grid"
+            className="absolute left-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-6 w-6" />
           </button>
           <button
-            type="button"
             onClick={() => go(1)}
             aria-label="Next slide"
-            className="absolute right-4 top-1/2 hidden h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/50 transition-colors hover:bg-black/70 md:grid"
+            className="absolute right-4 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors hover:bg-black/70 md:grid"
           >
-            <ChevronRight className="h-5 w-5" />
+            <ChevronRight className="h-6 w-6" />
           </button>
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1.5">
+          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2">
             {slides.map((s, i) => (
               <button
                 key={s.id}
-                type="button"
                 onClick={() => setIndex(i)}
                 aria-label={`Go to slide ${i + 1}`}
-                aria-current={i === index}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === index ? "w-6 bg-brand" : "w-1.5 bg-white/50"
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === index ? "w-8 bg-brand" : "w-2 bg-white/40"
                 }`}
               />
             ))}
@@ -273,63 +219,56 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Categories
+// Category Row
 // ---------------------------------------------------------------------------
-
 function CategoryRow({ categories }: { categories: Category[] }) {
-  if (categories.length === 0) return null;
+  if (!categories.length) return null;
+
   return (
-    <section aria-label="Shop by category" className={`${WRAP} py-6`}>
-      {/* Mobile: horizontal pills */}
-      <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 md:hidden">
+    <section className={`${WRAP} py-6 lg:py-8`}>
+      <div className="hidden md:grid md:grid-cols-5 gap-4">
+        {categories.map((c) => (
+          <Link
+            key={c.id}
+            href={`/categories/${c.slug}`}
+            className="group relative flex h-[110px] overflow-hidden rounded-lg bg-[#f4f4f4]"
+          >
+            <div className="relative z-10 flex flex-col justify-center pl-5 pr-2">
+              <h3 className="font-display text-[15px] font-black uppercase leading-tight text-neutral-900 lg:text-base">
+                {c.name}
+              </h3>
+              <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-neutral-900 transition-transform group-hover:translate-x-1">
+                Shop Now <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
+            {c.image && (
+              <img
+                src={c.image}
+                alt=""
+                className="absolute right-0 top-0 h-full w-[60%] object-cover object-top transition-transform duration-500 group-hover:scale-110"
+                style={{ maskImage: 'linear-gradient(to right, transparent, black 40%)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 40%)' }}
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-r from-[#f4f4f4] via-[#f4f4f4]/80 to-transparent pointer-events-none" />
+          </Link>
+        ))}
+      </div>
+
+      <div className="no-scrollbar -mx-4 flex gap-4 overflow-x-auto px-4 md:hidden">
         {categories.map((c) => (
           <Link
             key={c.id}
             href={`/categories/${c.slug}`}
             className="flex w-20 shrink-0 flex-col items-center gap-2"
           >
-            <span className="grid h-20 w-20 place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+            <span className="grid h-[72px] w-[72px] place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
               {c.image ? (
-                <img
-                  src={c.image}
-                  alt=""
-                  loading="lazy"
-                  className="h-full w-full object-cover"
-                />
+                <img src={c.image} alt="" className="h-full w-full object-cover" />
               ) : (
-                <Tag className="h-5 w-5 text-neutral-400" />
+                <Tag className="h-6 w-6 text-neutral-400" />
               )}
             </span>
-            <span className="text-center text-xs font-medium">{c.name}</span>
-          </Link>
-        ))}
-      </div>
-
-      {/* Desktop: rich cards */}
-      <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
-        {categories.slice(0, 4).map((c) => (
-          <Link
-            key={c.id}
-            href={`/categories/${c.slug}`}
-            className="group relative flex min-h-[140px] overflow-hidden rounded-xl bg-neutral-900"
-          >
-            {c.image && (
-              <img
-                src={c.image}
-                alt=""
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-110"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-            <div className="relative flex w-full flex-col justify-end p-5">
-              <h3 className="font-display text-lg font-extrabold uppercase leading-tight text-white">
-                {c.name}
-              </h3>
-              <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-white/85">
-                Shop Now <ArrowRight className="h-3 w-3" />
-              </span>
-            </div>
+            <span className="text-center text-[11px] font-bold text-neutral-800">{c.name}</span>
           </Link>
         ))}
       </div>
@@ -338,9 +277,8 @@ function CategoryRow({ categories }: { categories: Category[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Product card
+// Product Card
 // ---------------------------------------------------------------------------
-
 function ProductCard({ product }: { product: Product }) {
   const { addItem, removeItem, isInWishlist } = useWishlist();
   const isSaved = isInWishlist(product.id);
@@ -367,53 +305,65 @@ function ProductCard({ product }: { product: Product }) {
   };
 
   return (
-    <div className="group relative">
-      <Link href={`/products/${product.slug}`} className="block">
-        <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-neutral-100">
+    <div className="group relative flex flex-col">
+      <Link href={`/products/${product.slug}`} className="block relative">
+        <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-[#f5f5f5]">
           {image ? (
             <img
               src={image}
               alt={product.name}
               loading="lazy"
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 mix-blend-multiply"
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-neutral-300">
               <Tag className="h-10 w-10" />
             </div>
           )}
+          
           {discount > 0 && (
-            <span className="absolute left-2.5 top-2.5 rounded bg-brand px-2 py-1 text-[10px] font-bold uppercase leading-none text-white">
-              {discount}% off
+            <span className="absolute left-2 top-2 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              {discount}% OFF
             </span>
           )}
+
+          <button
+            type="button"
+            onClick={toggleWishlist}
+            aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-transparent text-neutral-500 transition-colors hover:text-red-500"
+          >
+            <Heart className={`h-5 w-5 ${isSaved ? "fill-red-500 text-red-500" : ""}`} />
+          </button>
         </div>
-        <div className="mt-3">
-          <h3 className="line-clamp-1 text-xs font-medium text-neutral-900 sm:text-sm">
+
+        <div className="mt-3 flex flex-col gap-1">
+          <h3 className="line-clamp-1 text-[13px] font-bold text-neutral-900 sm:text-sm">
             {product.name}
           </h3>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm font-bold text-neutral-950 sm:text-base">
+          
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-[14px] font-black text-neutral-950 sm:text-[15px]">
               {formatINR(product.basePricePaise)}
             </span>
             {discount > 0 && (
               <>
-                <span className="text-[11px] text-neutral-400 line-through">
+                <span className="text-[12px] text-neutral-400 line-through">
                   {formatINR(product.mrpPaise)}
                 </span>
-                <span className="text-[11px] font-semibold text-emerald-700">
+                <span className="text-[11px] font-bold text-[#e84912]">
                   Save {formatINR(product.mrpPaise - product.basePricePaise)}
                 </span>
               </>
             )}
           </div>
-          {product.colors.length > 0 && (
-            <div className="mt-2 flex gap-1.5" aria-hidden="true">
-              {product.colors.slice(0, 5).map((c, i) => (
+
+          {product.colors?.length > 0 && (
+            <div className="mt-1 flex gap-1.5">
+              {product.colors.slice(0, 4).map((c, i) => (
                 <span
                   key={`${c}-${i}`}
-                  title={c}
-                  className="h-3 w-3 rounded-full border border-black/10"
+                  className="h-3 w-3 rounded-full border border-neutral-300"
                   style={{ background: colorHex(c) }}
                 />
               ))}
@@ -421,287 +371,89 @@ function ProductCard({ product }: { product: Product }) {
           )}
         </div>
       </Link>
-
-      <button
-        type="button"
-        onClick={toggleWishlist}
-        aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
-        aria-pressed={isSaved}
-        className="absolute right-2.5 top-2.5 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/80 text-neutral-800 shadow-sm backdrop-blur transition-colors hover:text-red-500"
-      >
-        <Heart
-          className={`h-4 w-4 ${isSaved ? "fill-red-500 text-red-500" : ""}`}
-        />
-      </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Product section with "show more"
+// Collection Section
 // ---------------------------------------------------------------------------
-
-function ProductSection({
-  eyebrow,
-  title,
-  subtitle,
+function CollectionSection({
+  collection,
   products,
-  href,
-  initialCount = 5,
-  step = 5,
 }: {
-  eyebrow?: string;
-  title: string;
-  subtitle?: string | null;
+  collection: Collection;
   products: Product[];
-  href?: string;
-  initialCount?: number;
-  step?: number;
 }) {
-  const [visible, setVisible] = useState(initialCount);
-  const shown = products.slice(0, visible);
-  const hasMore = products.length > visible;
-
-  if (products.length === 0) return null;
+  if (!products.length) return null;
 
   return (
-    <section className={`${WRAP} py-8`}>
-      <div className="mb-5 flex items-end justify-between gap-4">
+    <section className={`${WRAP} py-8 lg:py-10`}>
+      <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          {eyebrow && (
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-brand">
-              {eyebrow}
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-brand">
+            Curated Edit
+          </p>
+          <h2 className="font-display text-3xl font-black uppercase leading-none tracking-tight sm:text-4xl">
+            {collection.name}
+          </h2>
+          {collection.description && (
+            <p className="mt-2 text-sm text-neutral-500 font-medium">
+              {collection.description}
             </p>
           )}
-          <h2 className="font-display text-2xl font-black italic uppercase leading-none tracking-tight sm:text-4xl">
-            {title}
-          </h2>
-          {subtitle && (
-            <p className="mt-2 text-xs text-neutral-500 sm:text-sm">
-              {subtitle}
-            </p>
-          )}
-        </div>
-        {href && (
-          <Link
-            href={href}
-            className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold transition-colors hover:text-brand"
-          >
-            View all <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        )}
-      </div>
-
-      <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-3 md:gap-5 md:overflow-visible md:px-0 lg:grid-cols-5">
-        {shown.map((p) => (
-          <div key={p.id} className="w-[44%] shrink-0 snap-start md:w-auto">
-            <ProductCard product={p} />
-          </div>
-        ))}
-      </div>
-
-      {hasMore && (
-        <div className="mt-6 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setVisible((v) => Math.min(v + step, products.length))}
-            className="inline-flex items-center gap-2 rounded-md border border-neutral-300 px-6 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-900 transition-colors hover:border-brand hover:bg-brand hover:text-white"
-          >
-            Show more <ArrowRight className="h-3.5 w-3.5 rotate-90" />
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Discovery filter bar
-// ---------------------------------------------------------------------------
-
-type FilterKey = "all" | "men" | "women" | "footwear" | "accessories";
-
-function DiscoverySection({
-  products,
-  categories,
-}: {
-  products: Product[];
-  categories: Category[];
-}) {
-  const [filter, setFilter] = useState<FilterKey>("all");
-
-  const allowed = useMemo(() => {
-    const categorySlugs = new Map(categories.map((c) => [c.id, c.slug]));
-    return products.filter((p) => {
-      if (filter === "all") return true;
-      const slug = categorySlugs.get(p.categoryId);
-      return slug === filter;
-    });
-  }, [filter, products, categories]);
-
-  const visible = allowed.slice(0, 10);
-
-  const pills: { key: FilterKey; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "men", label: "Men" },
-    { key: "women", label: "Women" },
-    { key: "footwear", label: "Footwear" },
-    { key: "accessories", label: "Accessories" },
-  ];
-
-  if (products.length === 0) return null;
-
-  return (
-    <section className={`${WRAP} py-8`}>
-      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-brand">
-            Discover
-          </p>
-          <h2 className="font-display text-2xl font-black italic uppercase leading-none tracking-tight sm:text-4xl">
-            Explore everything
-          </h2>
-          <p className="mt-2 text-xs text-neutral-500 sm:text-sm">
-            Browse {products.length} products across categories
-          </p>
         </div>
         <Link
-          href="/products"
-          className="inline-flex items-center gap-1 text-xs font-semibold transition-colors hover:text-brand"
+          href={`/collections/${collection.slug}`}
+          className="hidden sm:inline-flex shrink-0 items-center gap-1 text-[13px] font-bold text-neutral-900 transition-colors hover:text-brand mb-1"
         >
           View all <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
-      <div className="no-scrollbar -mx-4 mb-5 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        {pills.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => setFilter(p.key)}
-            aria-pressed={filter === p.key}
-            className={`shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition-colors ${
-              filter === p.key
-                ? "border-brand bg-brand text-white"
-                : "border-neutral-300 bg-white text-neutral-800 hover:border-neutral-900"
-            }`}
-          >
-            {p.label}
-          </button>
+      <div className="no-scrollbar -mx-4 flex snap-x gap-4 overflow-x-auto px-4 md:mx-0 md:grid md:grid-cols-5 md:overflow-visible md:px-0">
+        {products.map((p) => (
+          <div key={p.id} className="w-[60%] shrink-0 snap-start sm:w-[40%] md:w-auto">
+            <ProductCard product={p} />
+          </div>
         ))}
       </div>
-
-      {visible.length === 0 ? (
-        <p className="py-12 text-center text-sm text-neutral-500">
-          No products in this category yet.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
-          {visible.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Collections ribbon (uses collections collection)
+// Promo Banners
 // ---------------------------------------------------------------------------
-
-function CollectionsRibbon({
-  collections,
-  products,
-}: {
-  collections: Collection[];
-  products: Product[];
-}) {
-  if (collections.length === 0) return null;
-
-  const counts = new Map<string, number>();
-  for (const p of products) {
-    for (const cid of p.collectionIds || []) {
-      counts.set(cid, (counts.get(cid) ?? 0) + 1);
-    }
-  }
+function PromoBanners({ banners }: { banners: Banner[] }) {
+  if (!banners.length) return null;
 
   return (
     <section className={`${WRAP} py-6`}>
-      <div className="mb-4 flex items-end justify-between">
-        <h2 className="font-display text-lg font-black italic uppercase tracking-tight sm:text-2xl">
-          Shop by edit
-        </h2>
-        <Link
-          href="/collections"
-          className="inline-flex items-center gap-1 text-xs font-semibold transition-colors hover:text-brand"
-        >
-          All edits <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
-      <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
-        {collections.map((c) => (
-          <Link
-            key={c.id}
-            href={`/collections/${c.slug}`}
-            className="group relative flex min-h-[120px] w-64 shrink-0 overflow-hidden rounded-lg bg-neutral-900 sm:w-auto"
-          >
-            {c.image && (
-              <img
-                src={c.image}
-                alt=""
-                loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover opacity-80 transition-transform duration-500 group-hover:scale-110"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
-            <div className="relative flex flex-col justify-end p-4 text-white">
-              <h3 className="font-display text-xl font-black italic uppercase leading-none">
-                {c.name}
-              </h3>
-              <p className="mt-1 text-xs text-white/75">
-                {counts.get(c.id) ?? 0} products
-              </p>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Promo banners
-// ---------------------------------------------------------------------------
-
-function PromoBanners({ banners }: { banners: Banner[] }) {
-  if (banners.length === 0) return null;
-  return (
-    <section className={`${WRAP} py-4 sm:py-6`}>
-      <div className="grid gap-4 md:grid-cols-2">
-        {banners.slice(0, 2).map((b) => (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {banners.map((b) => (
           <Link
             key={b.id}
             href={b.ctaUrl || "/products"}
-            className="group relative isolate flex min-h-[160px] overflow-hidden rounded-lg bg-neutral-900"
+            className="group relative flex h-[200px] md:h-[240px] overflow-hidden rounded-xl bg-neutral-900"
           >
             {b.imageUrl && (
               <img
                 src={b.imageUrl}
                 alt=""
-                loading="lazy"
-                className="absolute inset-0 -z-20 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                className="absolute inset-0 h-full w-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
               />
             )}
-            <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/80 via-black/40 to-transparent" />
-            <div className="p-6 text-white">
-              <h3 className="max-w-[14rem] font-display text-2xl font-black italic uppercase leading-none sm:text-3xl">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/10" />
+            
+            <div className="relative z-10 flex flex-col justify-end p-6 md:p-8 w-full">
+              <h3 className="font-display text-2xl md:text-3xl font-black italic uppercase leading-[0.95] text-white">
                 {b.title}
               </h3>
               {b.subtitle && (
-                <p className="mt-1 text-sm text-white/80">{b.subtitle}</p>
+                <p className="mt-2 text-sm text-white/80">{b.subtitle}</p>
               )}
-              <span className="mt-3 inline-flex items-center gap-1.5 rounded bg-brand px-4 py-1.5 text-xs font-semibold transition-colors group-hover:bg-brand-hover">
+              <span className="mt-4 inline-flex w-fit items-center gap-2 rounded-md bg-brand px-5 py-2 text-xs font-bold uppercase tracking-wide text-white transition-colors group-hover:bg-brand-hover">
                 {b.ctaLabel || "Explore"} <ArrowRight className="h-3.5 w-3.5" />
               </span>
             </div>
@@ -713,22 +465,18 @@ function PromoBanners({ banners }: { banners: Banner[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Features strip
+// Features Strip
 // ---------------------------------------------------------------------------
-
 function FeaturesStrip() {
   return (
-    <section aria-label="Why shop with us" className={`${WRAP} py-10`}>
-      <ul className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+    <section className={`${WRAP} py-10 border-t border-neutral-100 mt-6`}>
+      <ul className="grid grid-cols-2 gap-y-8 gap-x-4 lg:grid-cols-4">
         {FEATURES.map(({ icon: Icon, title, sub }) => (
-          <li key={title} className="flex items-center gap-3">
-            <Icon
-              className="h-7 w-7 shrink-0 text-neutral-800"
-              strokeWidth={1.5}
-            />
+          <li key={title} className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-3">
+            <Icon className="h-7 w-7 shrink-0 text-neutral-800" strokeWidth={1.5} />
             <div>
-              <p className="text-xs font-semibold sm:text-sm">{title}</p>
-              <p className="text-[11px] text-neutral-500 sm:text-xs">{sub}</p>
+              <p className="text-[13px] font-bold text-neutral-900">{title}</p>
+              <p className="text-[12px] text-neutral-500 mt-0.5">{sub}</p>
             </div>
           </li>
         ))}
@@ -738,152 +486,44 @@ function FeaturesStrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Brand story
-// ---------------------------------------------------------------------------
-
-function BrandStory({
-  title,
-  subtitle,
-  bodyText,
-}: {
-  title?: string | null;
-  subtitle?: string | null;
-  bodyText?: string | null;
-}) {
-  return (
-    <section className="my-8 bg-neutral-50 py-16 sm:py-20">
-      <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.3em] text-brand">
-          Our Story
-        </p>
-        <h2 className="font-display text-3xl font-black italic uppercase tracking-tight sm:text-4xl">
-          {title || "Built to move"}
-        </h2>
-        {subtitle && (
-          <p className="mt-4 text-lg text-neutral-600">{subtitle}</p>
-        )}
-        <p className="mt-6 whitespace-pre-line leading-relaxed text-neutral-700">
-          {bodyText ||
-            "Born from the grit of everyday athletes. Shera Sports Wear builds performance gear that moves the way you do — engineered, tested, and refined for the modern athlete."}
-        </p>
-        <Link
-          href="/products"
-          className="mt-8 inline-flex items-center gap-2 rounded-md bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-neutral-700"
-        >
-          Explore the collection <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Newsletter
-// ---------------------------------------------------------------------------
-
-function Newsletter() {
-  const [email, setEmail] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setSubmitting(true);
-    // Replace with actual API call
-    await new Promise((r) => setTimeout(r, 400));
-    setSubmitting(false);
-    setEmail("");
-    toast.success("You're subscribed. Welcome to Shera.");
-  };
-
-  return (
-    <section className="bg-neutral-950 py-14">
-      <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.3em] text-brand">
-          Stay in the loop
-        </p>
-        <h2 className="font-display text-3xl font-black italic uppercase tracking-tight text-white sm:text-4xl">
-          Join the movement
-        </h2>
-        <p className="mx-auto mt-3 max-w-lg text-sm text-neutral-400">
-          New drops, training stories, and early access. No spam.
-        </p>
-        <form onSubmit={onSubmit} className="mx-auto mt-6 flex max-w-md gap-2">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            aria-label="Email address"
-            placeholder="you@example.com"
-            className="flex-1 rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-brand"
-          />
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-md bg-brand px-5 py-3 text-sm font-semibold text-white hover:bg-brand-hover disabled:opacity-60"
-          >
-            {submitting ? "…" : "Subscribe"}
-          </button>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Page Component
 // ---------------------------------------------------------------------------
-
 export default function StorefrontHomePage() {
   const [data, setData] = useState<HomepageData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-
     async function fetchData() {
       try {
         const byOrder = (name: string) =>
           getDocs(query(collection(db, name), orderBy("sortOrder", "asc")));
 
-        const [
-          sectionsSnap,
-          bannersSnap,
-          productsSnap,
-          categoriesSnap,
-          collectionsSnap,
-        ] = await Promise.all([
-          byOrder("homepageSections"),
-          byOrder("banners"),
-          getDocs(
-            query(
-              collection(db, "products"),
-              orderBy("createdAt", "desc"),
-              limit(60),
-            ),
-          ),
-          byOrder("categories"),
-          byOrder("collections"),
-        ]);
+        const [bannersSnap, productsSnap, categoriesSnap, collectionsSnap] =
+          await Promise.all([
+            byOrder("banners"),
+            getDocs(query(collection(db, "products"), limit(60))),
+            byOrder("categories"),
+            byOrder("collections"),
+          ]);
 
-        if (cancelled) return;
-
-        const banners: Record<string, Banner> = {};
-        bannersSnap.docs.forEach((d) => {
-          const b = d.data();
-          if (b.isActive === false) return;
-          banners[d.id] = {
-            id: d.id,
-            title: b.title || "",
-            subtitle: b.subtitle || null,
-            imageUrl: b.imageUrl || "",
-            ctaLabel: b.ctaLabel || null,
-            ctaUrl: b.ctaUrl || null,
-            placement: b.placement || "",
-            sortOrder: typeof b.sortOrder === "number" ? b.sortOrder : 0,
-          };
-        });
+        // ✅ Force banners to be an ARRAY
+        const banners: Banner[] = bannersSnap.docs
+          .map((d) => {
+            const b = d.data();
+            return {
+              id: d.id,
+              title: b.title || "",
+              subtitle: b.subtitle || null,
+              imageUrl: b.imageUrl || "",
+              ctaLabel: b.ctaLabel || null,
+              ctaUrl: b.ctaUrl || null,
+              placement: b.placement || "",
+              sortOrder: b.sortOrder || 0,
+              isActive: b.isActive !== false,
+            };
+          })
+          .filter((b) => b.isActive)
+          .sort((a, b) => a.sortOrder - b.sortOrder);
 
         const products: Product[] = productsSnap.docs
           .filter((d) => d.data().status === "active")
@@ -893,17 +533,12 @@ export default function StorefrontHomePage() {
               id: d.id,
               name: p.name || "",
               slug: p.slug || d.id,
-              basePricePaise:
-                typeof p.basePricePaise === "number" ? p.basePricePaise : 0,
-              mrpPaise: typeof p.mrpPaise === "number" ? p.mrpPaise : 0,
+              basePricePaise: p.basePricePaise || 0,
+              mrpPaise: p.mrpPaise || 0,
               images: Array.isArray(p.images) ? p.images : [],
               categoryId: p.categoryId || "",
-              collectionIds: Array.isArray(p.collectionIds)
-                ? p.collectionIds
-                : [],
-              colors: Array.isArray(p.colors)
-                ? p.colors.filter((c: unknown) => typeof c === "string")
-                : [],
+              collectionIds: Array.isArray(p.collectionIds) ? p.collectionIds : [],
+              colors: Array.isArray(p.colors) ? p.colors : [],
             };
           });
 
@@ -916,7 +551,6 @@ export default function StorefrontHomePage() {
               name: c.name || "",
               slug: c.slug || d.id,
               image: c.image || null,
-              description: c.description || null,
             };
           });
 
@@ -933,216 +567,86 @@ export default function StorefrontHomePage() {
             };
           });
 
-        const sections: HomepageSection[] = sectionsSnap.docs
-          .filter((d) => d.data().isActive === true)
-          .map((d) => {
-            const s = d.data();
-            return {
-              id: d.id,
-              type: s.type || "",
-              title: s.title || null,
-              subtitle: s.subtitle || null,
-              sortOrder: typeof s.sortOrder === "number" ? s.sortOrder : 0,
-              config: s.config || {},
-              categoryIds: Array.isArray(s.categoryIds) ? s.categoryIds : [],
-            };
-          });
-
-        setData({ sections, banners, products, categories, collections });
+        setData({ banners, products, categories, collections });
       } catch (error) {
         console.error("Failed to load storefront data:", error);
-        if (!cancelled) {
-          setData({
-            sections: [],
-            banners: {},
-            products: [],
-            categories: [],
-            collections: [],
-          });
-        }
+        // ✅ fallback is also an array
+        setData({ banners: [], products: [], categories: [], collections: [] });
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     }
 
     fetchData();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   if (loading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center bg-white">
-        <Loader2
-          className="h-8 w-8 animate-spin text-brand"
-          aria-label="Loading"
-        />
+        <Loader2 className="h-8 w-8 animate-spin text-brand" />
       </div>
     );
   }
 
-  if (!data || data.sections.length === 0) {
-    return (
-      <section className="mx-auto max-w-4xl px-4 py-24 text-center sm:px-6 lg:px-8">
-        <h1 className="font-display text-4xl font-black italic uppercase tracking-tight sm:text-5xl">
-          Shera Sports Wear
-        </h1>
-        <p className="mt-4 text-neutral-600">
-          The store is being set up. Check back soon.
-        </p>
-        <Link
-          href="/products"
-          className="mt-8 inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-sm font-semibold text-white hover:bg-brand-hover"
-        >
-          Browse products <ArrowRight className="h-4 w-4" />
-        </Link>
-      </section>
-    );
-  }
+  if (!data) return null;
 
-  // ---- Derive hero slides from hero sections ----
-  const heroSections = data.sections.filter((s) => s.type === "hero");
-  const heroSlides: Slide[] = heroSections.map((s) => {
-    const banner = s.config?.bannerId
-      ? data.banners[s.config.bannerId]
-      : undefined;
-    return {
-      id: s.id,
-      title: banner?.title || s.title || "Gear for a stronger you",
-      subtitle: banner?.subtitle || s.subtitle,
-      imageUrl: banner?.imageUrl || "",
-      ctaLabel: banner?.ctaLabel || null,
-      ctaUrl: banner?.ctaUrl || null,
-    };
-  });
+  // 1. Hero Slides (all banners with placement "home_hero")
+  const heroBanners = data.banners.filter((b) => b.placement === "home_hero");
+  const heroSlides: Slide[] = heroBanners.length > 0
+    ? heroBanners.map((b) => ({
+        id: b.id,
+        title: b.title,
+        subtitle: b.subtitle,
+        imageUrl: b.imageUrl,
+        ctaLabel: b.ctaLabel,
+        ctaUrl: b.ctaUrl,
+      }))
+    : [{
+        id: "fallback-hero",
+        title: "Gear For A Stronger You",
+        subtitle: "Premium sports wear for training, running, gym and everyday performance.",
+        imageUrl: "https://placehold.co/1920x800/111111/FF6B00?text=Shera+Sports",
+        ctaLabel: "Shop Now",
+        ctaUrl: "/products",
+      }];
 
-  // ---- Promo banners used by promo_strip sections ----
-  const stripBanners = Object.values(data.banners)
+  // 2. Promo Banners (placement "home_strip")
+  const promoBanners = data.banners
     .filter((b) => b.placement === "home_strip")
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // ---- Featured / bestsellers fallbacks ----
-  const featuredFallback = data.products.slice(0, 10);
-
-  // ---- Brand story section ----
-  const storySection = data.sections.find((s) => s.type === "brand_story");
+  // 3. Collections with their products mapped
+  const collectionSections = data.collections
+    .map((col) => {
+      const colProducts = data.products
+        .filter((p) => p.collectionIds.includes(col.id))
+        .slice(0, 5);
+      return { collection: col, products: colProducts };
+    })
+    .filter((c) => c.products.length > 0);
 
   return (
-    <>
-      {data.sections.map((section) => {
-        switch (section.type) {
-          case "hero":
-            return section.id === heroSections[0]?.id ? (
-              <HeroSlider key={section.id} slides={heroSlides} />
-            ) : null;
+    <div className="bg-white">
+      {/* 1. Hero Carousel (Using DB Banners) */}
+      <HeroSlider slides={heroSlides} />
 
-          case "category_grid": {
-            const shown = section.categoryIds?.length
-              ? data.categories.filter((c) =>
-                  section.categoryIds!.includes(c.id),
-                )
-              : data.categories;
-            return (
-              <CategoryRow
-                key={section.id}
-                categories={shown.slice(0, 4)}
-              />
-            );
-          }
+      {/* 2. Categories (5 columns) */}
+      <CategoryRow categories={data.categories.slice(0, 5)} />
 
-          case "featured_products": {
-            const limitCount = Number(section.config?.limit) || 10;
-            return (
-              <ProductSection
-                key={section.id}
-                eyebrow="Featured"
-                title={section.title || "Popular products"}
-                subtitle={section.subtitle}
-                products={data.products.slice(0, limitCount)}
-                href="/products"
-                initialCount={5}
-                step={5}
-              />
-            );
-          }
+      {/* 3. Promo Banners */}
+      {promoBanners.length > 0 && <PromoBanners banners={promoBanners} />}
 
-          case "bestsellers": {
-            const limitCount = Number(section.config?.limit) || 10;
-            // Seed doesn't track bestsellers specifically — use all active products
-            const list = featuredFallback.slice(0, limitCount);
-            return (
-              <ProductSection
-                key={section.id}
-                eyebrow="Bestsellers"
-                title={section.title || "Customer favourites"}
-                subtitle={section.subtitle}
-                products={list}
-                href="/products"
-                initialCount={5}
-                step={5}
-              />
-            );
-          }
+      {/* 4. Collections mapped to product grids */}
+      {collectionSections.map((section) => (
+        <CollectionSection
+          key={section.collection.id}
+          collection={section.collection}
+          products={section.products}
+        />
+      ))}
 
-          case "collection": {
-            const col = data.collections.find(
-              (c) => c.id === section.config?.collectionId,
-            );
-            if (!col) return null;
-            const limitCount = Number(section.config?.limit) || 10;
-            const prods = data.products
-              .filter((p) => p.collectionIds.includes(col.id))
-              .slice(0, limitCount);
-            return (
-              <ProductSection
-                key={section.id}
-                eyebrow="Curated"
-                title={section.title || col.name}
-                subtitle={section.subtitle || col.description}
-                products={prods}
-                href={`/collections/${col.slug}`}
-                initialCount={5}
-                step={5}
-              />
-            );
-          }
-
-          case "promo_strip":
-            return stripBanners.length ? (
-              <PromoBanners key={section.id} banners={stripBanners} />
-            ) : null;
-
-          case "brand_story":
-            return (
-              <BrandStory
-                key={section.id}
-                title={section.title}
-                subtitle={section.subtitle}
-                bodyText={section.config?.bodyText}
-              />
-            );
-
-          default:
-            return null;
-        }
-      })}
-
-      {/* Always-on discovery + collections ribbon */}
-      <CollectionsRibbon
-        collections={data.collections}
-        products={data.products}
-      />
-      <DiscoverySection
-        products={data.products}
-        categories={data.categories}
-      />
-
+      {/* 5. Features Strip */}
       <FeaturesStrip />
-
-      {!storySection && <BrandStory />}
-
-      <Newsletter />
-    </>
+    </div>
   );
 }
