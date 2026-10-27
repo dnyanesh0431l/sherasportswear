@@ -1,7 +1,23 @@
 @import "tailwindcss";
 
 /* ========================================================================== */
-/* Design tokens                                                               */
+/* Tailwind v4 Theme Configuration                                           */
+/* This makes classes like bg-brand, text-brand, font-display WORK!           */
+/* ========================================================================== */
+
+@theme {
+  --color-brand: var(--brand-orange);
+  --color-brand-hover: var(--brand-orange-hover);
+  --color-brand-black: var(--brand-black);
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-white: var(--brand-white);
+
+  --font-display: var(--font-heading);
+  --font-body: var(--font-body);
+}
+
+/* ========================================================================== */
+/* Design tokens                                                              */
 /* ========================================================================== */
 
 :root {
@@ -37,9 +53,7 @@
 }
 
 /* ========================================================================== */
-/* Base layer                                                                  */
-/* Kept in @layer base so Tailwind utilities (mt-2, tracking-tight, etc.)      */
-/* can override these defaults. Unlayered element rules would beat them.       */
+/* Base layer                                                                 */
 /* ========================================================================== */
 
 @layer base {
@@ -172,7 +186,7 @@
 }
 
 /* ========================================================================== */
-/* Components layer                                                            */
+/* Components layer                                                           */
 /* ========================================================================== */
 
 @layer components {
@@ -267,7 +281,7 @@
     color: var(--brand-white);
   }
 
-  /* Auth form fields (login / register / forgot password) */
+  /* Auth form fields */
 
   .auth-field {
     display: flex;
@@ -307,7 +321,6 @@
     opacity: 0.5;
   }
 
-  /* The wrapper shows the focus ring, so the inner input needs none. */
   .auth-field input:focus-visible {
     outline: none;
   }
@@ -858,7 +871,7 @@
 }
 
 /* ========================================================================== */
-/* Animations                                                                  */
+/* Animations                                                                 */
 /* ========================================================================== */
 
 @keyframes fade-up {
@@ -874,7 +887,7 @@
 }
 
 /* ========================================================================== */
-/* Accessibility                                                               */
+/* Accessibility                                                              */
 /* ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {

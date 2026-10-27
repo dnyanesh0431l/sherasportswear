@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { db } from "../../lib/firebase/client";
+import { useWishlist } from "./../context/wishlist-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,7 +42,7 @@ type Product = {
   mrpPaise: number;
   images: string[];
   categoryId: string;
-  colors: string[]; // optional CSS colors (e.g. "#111111") from Firestore
+  colors: string[];
 };
 
 type Category = {
@@ -98,8 +100,6 @@ function discountPercent(mrp: number, price: number): number {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
-/** "Gear for a stronger you" -> ["Gear for a", "stronger you"] (accent in orange).
- *  Use "|" or a newline in the title to choose the split yourself. */
 function splitTitle(title: string): [string, string] {
   const lines = title.split(/\n|\|/).map((s) => s.trim());
   if (lines.length > 1) return [lines[0], lines.slice(1).join(" ")];
@@ -133,7 +133,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
       className="relative isolate overflow-hidden bg-neutral-950 text-white"
     >
       {slide.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={slide.imageUrl}
           alt=""
@@ -177,7 +176,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
         </div>
       </div>
 
-      {/* Brand tagline (desktop) */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute right-[7%] top-1/2 hidden -translate-y-1/2 -rotate-12 lg:block"
@@ -218,9 +216,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
                 onClick={() => setIndex(i)}
                 aria-label={`Go to slide ${i + 1}`}
                 aria-current={i === index}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === index ? "w-5 bg-brand" : "w-1.5 bg-white/50"
-                }`}
+                className={`h-1.5 rounded-full transition-all ${i === index ? "w-5 bg-brand" : "w-1.5 bg-white/50"}`}
               />
             ))}
           </div>
@@ -237,7 +233,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
 function CategoryRow({ categories }: { categories: Category[] }) {
   return (
     <section aria-label="Shop by category" className={`${WRAP} py-5`}>
-      {/* Desktop / tablet tiles */}
       <div className="hidden gap-4 md:grid md:grid-cols-3 lg:grid-cols-5">
         {categories.map((c) => (
           <Link
@@ -246,7 +241,6 @@ function CategoryRow({ categories }: { categories: Category[] }) {
             className="group relative flex min-h-[96px] overflow-hidden rounded-lg bg-neutral-200 lg:min-h-[108px]"
           >
             {c.image && (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={c.image}
                 alt=""
@@ -267,7 +261,6 @@ function CategoryRow({ categories }: { categories: Category[] }) {
         ))}
       </div>
 
-      {/* Mobile circles */}
       <div className="no-scrollbar -mx-4 flex gap-5 overflow-x-auto px-4 md:hidden">
         {categories.map((c) => (
           <Link
@@ -277,7 +270,6 @@ function CategoryRow({ categories }: { categories: Category[] }) {
           >
             <span className="grid h-16 w-16 place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
               {c.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={c.image}
                   alt=""
@@ -301,15 +293,34 @@ function CategoryRow({ categories }: { categories: Category[] }) {
 // ---------------------------------------------------------------------------
 
 function ProductCard({ product }: { product: Product }) {
+  const { addItem, removeItem, isInWishlist } = useWishlist();
+  const isSaved = isInWishlist(product.id);
   const discount = discountPercent(product.mrpPaise, product.basePricePaise);
   const image = product.images[0];
+
+  const toggleWishlist = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isSaved) {
+      removeItem(product.id);
+      toast.info("Removed from wishlist");
+    } else {
+      addItem({
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        price: product.basePricePaise,
+        mrp: product.mrpPaise,
+        image: image || "",
+      });
+      toast.success("Added to wishlist");
+    }
+  };
 
   return (
     <div className="group relative">
       <Link href={`/products/${product.slug}`} className="block">
         <div className="relative aspect-[5/6] overflow-hidden rounded-lg bg-neutral-100">
           {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={image}
               alt={product.name}
@@ -359,13 +370,16 @@ function ProductCard({ product }: { product: Product }) {
           )}
         </div>
       </Link>
-      {/* TODO: wire to your wishlist logic */}
+
       <button
         type="button"
-        aria-label={`Add ${product.name} to wishlist`}
-        className="absolute right-2.5 top-2.5 grid h-7 w-7 place-items-center rounded-full text-neutral-800 transition-colors hover:text-brand"
+        onClick={toggleWishlist}
+        aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
+        className="absolute right-2.5 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-full text-neutral-800 transition-colors hover:text-red-500 bg-white/70 backdrop-blur-sm"
       >
-        <Heart className="h-4 w-4" />
+        <Heart
+          className={`h-4 w-4 ${isSaved ? "fill-red-500 text-red-500" : ""}`}
+        />
       </button>
     </div>
   );
@@ -399,7 +413,9 @@ function ProductSection({
             {title}
           </h2>
           {subtitle && (
-            <p className="mt-2 text-xs text-neutral-500 sm:text-sm">{subtitle}</p>
+            <p className="mt-2 text-xs text-neutral-500 sm:text-sm">
+              {subtitle}
+            </p>
           )}
         </div>
         {href && (
@@ -435,12 +451,9 @@ function PromoBanners({ banners }: { banners: Banner[] }) {
           <Link
             key={b.id}
             href={b.ctaUrl || "/products"}
-            className={`group relative isolate min-h-[140px] overflow-hidden rounded-lg bg-neutral-900 md:min-h-[150px] ${
-              i > 0 ? "hidden md:block" : ""
-            }`}
+            className={`group relative isolate min-h-[140px] overflow-hidden rounded-lg bg-neutral-900 md:min-h-[150px] ${i > 0 ? "hidden md:block" : ""}`}
           >
             {b.imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={b.imageUrl}
                 alt=""
@@ -473,7 +486,10 @@ function FeaturesStrip() {
       <ul className="grid grid-cols-2 gap-6 lg:grid-cols-4">
         {FEATURES.map(({ icon: Icon, title, sub }) => (
           <li key={title} className="flex items-center gap-3">
-            <Icon className="h-7 w-7 shrink-0 text-neutral-800" strokeWidth={1.5} />
+            <Icon
+              className="h-7 w-7 shrink-0 text-neutral-800"
+              strokeWidth={1.5}
+            />
             <div>
               <p className="text-xs font-semibold sm:text-sm">{title}</p>
               <p className="text-[11px] text-neutral-500 sm:text-xs">{sub}</p>
@@ -486,7 +502,7 @@ function FeaturesStrip() {
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Page Component
 // ---------------------------------------------------------------------------
 
 export default function StorefrontHomePage() {
@@ -616,7 +632,10 @@ export default function StorefrontHomePage() {
   if (loading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center bg-white">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" aria-label="Loading" />
+        <Loader2
+          className="h-8 w-8 animate-spin text-brand"
+          aria-label="Loading"
+        />
       </div>
     );
   }
@@ -640,10 +659,11 @@ export default function StorefrontHomePage() {
     );
   }
 
-  // All "hero" sections become one slider, rendered where the first one sits.
   const heroSections = data.sections.filter((s) => s.type === "hero");
   const heroSlides: Slide[] = heroSections.map((s) => {
-    const banner = s.config?.bannerId ? data.banners[s.config.bannerId] : undefined;
+    const banner = s.config?.bannerId
+      ? data.banners[s.config.bannerId]
+      : undefined;
     return {
       id: s.id,
       title: banner?.title || s.title || "Gear for a stronger you",
@@ -665,7 +685,9 @@ export default function StorefrontHomePage() {
 
           case "category_grid": {
             const shown = section.categoryIds?.length
-              ? data.categories.filter((c) => section.categoryIds!.includes(c.id))
+              ? data.categories.filter((c) =>
+                  section.categoryIds!.includes(c.id),
+                )
               : data.categories;
             return shown.length ? (
               <CategoryRow key={section.id} categories={shown} />
@@ -678,7 +700,9 @@ export default function StorefrontHomePage() {
             return (
               <ProductSection
                 key={section.id}
-                eyebrow={section.type === "bestsellers" ? "Bestsellers" : "Featured"}
+                eyebrow={
+                  section.type === "bestsellers" ? "Bestsellers" : "Featured"
+                }
                 title={section.title || "Popular products"}
                 subtitle={section.subtitle}
                 products={data.products.slice(0, limitCount)}
@@ -709,8 +733,6 @@ export default function StorefrontHomePage() {
             );
           }
 
-          // Use config.bannerIds (array) to show several banners side by side.
-          // A single config.bannerId also works.
           case "promo_strip": {
             const ids: string[] = Array.isArray(section.config?.bannerIds)
               ? section.config.bannerIds
@@ -741,7 +763,10 @@ export default function StorefrontHomePage() {
               section.config?.bodyText ||
               "Born from the grit of everyday athletes. Shera Sports Wear builds performance gear that moves the way you do — engineered, tested, and refined for the modern athlete.";
             return (
-              <section key={section.id} className="my-8 bg-neutral-50 py-16 sm:py-20">
+              <section
+                key={section.id}
+                className="my-8 bg-neutral-50 py-16 sm:py-20"
+              >
                 <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
                   <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.3em] text-brand">
                     Our Story
@@ -750,7 +775,9 @@ export default function StorefrontHomePage() {
                     {section.title || "Built to move"}
                   </h2>
                   {section.subtitle && (
-                    <p className="mt-4 text-lg text-neutral-600">{section.subtitle}</p>
+                    <p className="mt-4 text-lg text-neutral-600">
+                      {section.subtitle}
+                    </p>
                   )}
                   <p className="mt-6 whitespace-pre-line leading-relaxed text-neutral-700">
                     {body}
@@ -767,7 +794,6 @@ export default function StorefrontHomePage() {
 
       <FeaturesStrip />
 
-      {/* Newsletter */}
       <section className="bg-neutral-950 py-14">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6 lg:px-8">
           <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.3em] text-brand">
@@ -779,7 +805,6 @@ export default function StorefrontHomePage() {
           <p className="mx-auto mt-3 max-w-lg text-sm text-neutral-400">
             New drops, training stories, and early access. No spam.
           </p>
-          {/* TODO: connect to your newsletter endpoint */}
           <form action="#" className="mx-auto mt-6 flex max-w-md gap-2">
             <input
               type="email"

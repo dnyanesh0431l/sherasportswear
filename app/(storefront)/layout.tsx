@@ -2,8 +2,7 @@
 import { Poppins } from "next/font/google";
 import Link from "next/link";
 import { StorefrontHeader } from "./_components/header";
-import { MobileNav } from "./_components/mobile-nav";
-
+import { StorefrontProviders } from "./../providers";
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800", "900"],
@@ -55,6 +54,7 @@ export default function StorefrontLayout({
   children: React.ReactNode;
 }) {
   return (
+    <StorefrontProviders>
     <div
       className={`${poppins.variable} flex min-h-screen flex-col bg-white font-display text-neutral-900`}
     >
@@ -120,7 +120,7 @@ export default function StorefrontLayout({
         </div>
       </footer>
 
-      <MobileNav />
     </div>
+    </StorefrontProviders>
   );
 }

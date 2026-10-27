@@ -10,8 +10,10 @@ import {
 } from "firebase/firestore";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronRight,
+  Copy,
   ExternalLink,
   Loader2,
   RefreshCw,
@@ -73,25 +75,34 @@ export default function ShipmentsListPage() {
   const [items, setItems] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [indexUrl, setIndexUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [carrierFilter, setCarrierFilter] = useState("all");
 
+  const copyIndexUrl = async () => {
+    if (!indexUrl) return;
+    try {
+      await navigator.clipboard.writeText(indexUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard blocked — user can still select manually
+    }
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setIndexUrl(null);
     try {
       const snap = await getDocs(
-        query(
-          collectionGroup(db, "shipments"),
-          orderBy("createdAt", "desc")
-        )
+        query(collectionGroup(db, "shipments"), orderBy("createdAt", "desc")),
       );
       setItems(
         snap.docs.map((d) => {
           const s = d.data();
-          // doc.ref.parent -> shipments collection
-          // doc.ref.parent.parent -> order doc
           const orderId = d.ref.parent.parent?.id ?? "unknown";
           return {
             id: d.id,
@@ -104,17 +115,27 @@ export default function ShipmentsListPage() {
             deliveredAt: toDate(s.deliveredAt),
             createdAt: toDate(s.createdAt),
           };
-        })
+        }),
       );
     } catch (e) {
       const msg = (e as Error)?.message || "Failed to load shipments";
-      setError(
-        msg.includes("permission-denied")
-          ? "Permission denied. Add a collection-group rule for `shipments` (see notes below)."
-          : msg.includes("index")
-            ? "Missing collection-group index for `shipments.createdAt`. Check console log for the auto-generated link."
-            : msg
+      // Firebase embeds the one-click index creation link in the error message.
+      // Example: "The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/.../firestore/indexes?create_composite=..."
+      const match = msg.match(
+        /https:\/\/console\.firebase\.google\.com\/[^\s"']+/,
       );
+      if (match) {
+        setIndexUrl(match[0]);
+        setError(
+          "Missing collection-group index for `shipments.createdAt`. Use the one-click link below to create it.",
+        );
+      } else if (msg.includes("permission-denied")) {
+        setError(
+          "Permission denied. Add a collection-group rule for `shipments` (see notes below).",
+        );
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -125,11 +146,8 @@ export default function ShipmentsListPage() {
   }, [load]);
 
   const carriers = useMemo(
-    () =>
-      Array.from(
-        new Set(items.map((s) => s.carrier).filter(Boolean))
-      ),
-    [items]
+    () => Array.from(new Set(items.map((s) => s.carrier).filter(Boolean))),
+    [items],
   );
 
   const filtered = useMemo(() => {
@@ -150,11 +168,11 @@ export default function ShipmentsListPage() {
     () => ({
       pending: items.filter((s) => s.status === "pending").length,
       inTransit: items.filter(
-        (s) => s.status === "in_transit" || s.status === "out_for_delivery"
+        (s) => s.status === "in_transit" || s.status === "out_for_delivery",
       ).length,
       delivered: items.filter((s) => s.status === "delivered").length,
     }),
-    [items]
+    [items],
   );
 
   return (
@@ -177,9 +195,49 @@ export default function ShipmentsListPage() {
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>{error}</span>
+          <div className="flex-1 min-w-0">
+            <div>{error}</div>
+
+            {indexUrl && (
+              <div className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={indexUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                  >
+                    Open index creation page
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={copyIndexUrl}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-3 w-3" /> Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3" /> Copy link
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="rounded-md border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-red-800 break-all select-all">
+                  {indexUrl}
+                </div>
+                <p className="text-[11px] text-red-600/80">
+                  After the index finishes building (usually 1–2 min), click
+                  Refresh above.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -263,8 +321,8 @@ export default function ShipmentsListPage() {
                 : "No shipments match your filters"}
             </p>
             <p className="text-xs text-neutral-500 mt-1 max-w-sm mx-auto">
-              Shipments are added from an order's detail page. Open an order
-              and use "Add shipment" to create one.
+              Shipments are added from an order's detail page. Open an order and
+              use "Add shipment" to create one.
             </p>
             <Link
               href="/admin/orders"
@@ -289,7 +347,10 @@ export default function ShipmentsListPage() {
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filtered.map((s) => (
-                  <tr key={`${s.orderId}-${s.id}`} className="hover:bg-neutral-50">
+                  <tr
+                    key={`${s.orderId}-${s.id}`}
+                    className="hover:bg-neutral-50"
+                  >
                     <td className="px-4 py-3">
                       <Link
                         href={`/admin/orders/${s.orderId}`}
