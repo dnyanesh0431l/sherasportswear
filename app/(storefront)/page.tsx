@@ -1,12 +1,11 @@
 // app/(storefront)/page.tsx
 import { ArrowRight, Tag } from "lucide-react";
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import { adminDb } from "../../lib/firebase/admin";
 
-// Use revalidate instead of dynamic for better Next.js compiler compatibility
-export const revalidate = 0;
-
+// Keep metadata export (it is perfectly safe)
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
@@ -175,7 +174,6 @@ async function getHomepageData() {
     return { sections, banners, products, categories, collections };
   } catch (error) {
     console.error("Failed to fetch homepage data during build/render:", error);
-    // Return empty fallbacks so the build completes successfully
     return {
       sections: [] as HomepageSection[],
       banners: {} as Record<string, Banner>,
@@ -407,9 +405,7 @@ function PromoStripSection({
           <h3 className="font-display text-2xl sm:text-3xl uppercase tracking-wide text-white">
             {title}
           </h3>
-          {subtitle && (
-            <p className="text-white/90 text-sm mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-white/90 text-sm mt-1">{subtitle}</p>}
         </div>
         <Link
           href={ctaUrl}
@@ -618,10 +614,12 @@ function SectionRenderer({
 // ---------------------------------------------------------------------------
 
 export default async function StorefrontHomePage() {
+  // THIS IS THE MAGIC FIX: It safely disables static generation
+  // without triggering the Next.js compiler bug.
+  noStore();
+
   const data = await getHomepageData();
 
-  // Graceful empty state — happens if admin hasn't created sections yet,
-  // OR if the database fetch failed during the build process.
   if (data.sections.length === 0) {
     return (
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
@@ -647,7 +645,6 @@ export default async function StorefrontHomePage() {
         <SectionRenderer key={section.id} section={section} data={data} />
       ))}
 
-      {/* Newsletter (static — wire to a server action later) */}
       <section className="bg-neutral-950 py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-500 mb-3">
