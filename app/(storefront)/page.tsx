@@ -4,7 +4,7 @@ import { ArrowRight, Tag } from "lucide-react";
 import { getDocs, query, collection, orderBy } from "firebase/firestore";
 import { adminDb  } from "../../lib/firebase/admin";
 import type { Metadata } from "next";
-export const dynamic = "force-dynamic"; // <-- ADD THIS LINE
+// export const dynamic = "force-dynamic"; // <-- ADD THIS LINE
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
