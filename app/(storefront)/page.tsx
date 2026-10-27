@@ -1,15 +1,10 @@
 // app/(storefront)/page.tsx
 "use client";
 
-import {
-  collection,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Headphones,
@@ -17,11 +12,13 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  SlidersHorizontal,
   Tag,
   Truck,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { db } from "../../lib/firebase/client";
 import { useWishlist } from "./../context/wishlist-context";
@@ -69,11 +66,7 @@ type Collection = {
   description: string | null;
 };
 
-type Section = {
-  id: string;
-  type: string;
-  isActive: boolean;
-};
+type Section = { id: string; type: string; isActive: boolean };
 
 type Slide = Pick<
   Banner,
@@ -88,15 +81,20 @@ type HomepageData = {
   sections: Section[];
 };
 
-type Tab = {
-  key: string;
-  label: string;
-  href: string;
-  products: Product[];
+type Tab = { key: string; label: string; href: string; products: Product[] };
+
+type Filters = {
+  categories: string[];
+  price: string | null;
+  sizes: string[];
+  colors: string[];
+  onSale: boolean;
 };
 
+type SortKey = "featured" | "price-asc" | "price-desc" | "discount";
+
 // ---------------------------------------------------------------------------
-// Helpers
+// Constants + helpers
 // ---------------------------------------------------------------------------
 const WRAP = "mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8";
 const HIDE_SCROLLBAR =
@@ -104,7 +102,37 @@ const HIDE_SCROLLBAR =
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 const SLIDE_MS = 6500;
-const SHOWCASE_LIMIT = 10;
+const PAGE_SIZE = 20;
+
+const EMPTY_FILTERS: Filters = {
+  categories: [],
+  price: null,
+  sizes: [],
+  colors: [],
+  onSale: false,
+};
+
+const PRICE_BUCKETS = [
+  { key: "u1000", label: "Under ₹1,000", min: 0, max: 99999 },
+  { key: "1-2k", label: "₹1,000 – ₹1,999", min: 100000, max: 199999 },
+  { key: "2-3k", label: "₹2,000 – ₹2,999", min: 200000, max: 299999 },
+  { key: "3k", label: "₹3,000 & above", min: 300000, max: Infinity },
+];
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: "featured", label: "Featured" },
+  { key: "price-asc", label: "Price: low to high" },
+  { key: "price-desc", label: "Price: high to low" },
+  { key: "discount", label: "Biggest discount" },
+];
+
+const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "One Size"];
+function sizeRank(s: string): number {
+  const i = SIZE_ORDER.indexOf(s);
+  if (i >= 0) return i;
+  const n = Number(s);
+  return Number.isFinite(n) ? 100 + n : 500;
+}
 
 function formatINR(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN")}`;
@@ -115,22 +143,30 @@ function discountPercent(mrp: number, price: number): number {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
-// Headline split: last word(s) go on a second line so long titles stack neatly.
 function splitTitle(title: string): [string, string] {
   const lines = title.split(/\n|\|/).map((s) => s.trim());
   if (lines.length > 1) return [lines[0], lines.slice(1).join(" ")];
   const words = title.trim().split(/\s+/);
   if (words.length <= 1) return [title, ""];
-  if (words.length <= 3) return [words.slice(0, -1).join(" "), words.slice(-1)[0]];
+  if (words.length <= 3)
+    return [words.slice(0, -1).join(" "), words[words.length - 1]];
   const mid = Math.ceil(words.length / 2);
   return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
 }
 
 const FEATURES = [
   { icon: ShieldCheck, title: "Premium quality", sub: "Built for performance" },
-  { icon: Truck, title: "Free delivery over ₹999", sub: "Shipped across India" },
+  {
+    icon: Truck,
+    title: "Free delivery over ₹999",
+    sub: "Shipped across India",
+  },
   { icon: RotateCcw, title: "Easy returns", sub: "Hassle-free exchanges" },
-  { icon: Headphones, title: "Real support", sub: "COD available on all orders" },
+  {
+    icon: Headphones,
+    title: "Real support",
+    sub: "COD available on all orders",
+  },
 ];
 
 const COLOR_MAP: Record<string, string> = {
@@ -147,25 +183,56 @@ function colorHex(name: string): string {
   return COLOR_MAP[name.trim().toLowerCase()] ?? "#d4d4d4";
 }
 
-// ---------------------------------------------------------------------------
-// Top bar
-// ---------------------------------------------------------------------------
-function TopBar() {
+// Filter matching. `skip` leaves one group out so option counts stay accurate
+// (e.g. category counts ignore the category filter itself).
+function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
+  if (
+    skip !== "categories" &&
+    f.categories.length &&
+    !f.categories.includes(p.categoryId)
+  )
+    return false;
+  if (skip !== "price" && f.price) {
+    const b = PRICE_BUCKETS.find((x) => x.key === f.price);
+    if (b && !(p.basePricePaise >= b.min && p.basePricePaise <= b.max))
+      return false;
+  }
+  if (
+    skip !== "sizes" &&
+    f.sizes.length &&
+    !f.sizes.some((s) => p.sizes.includes(s))
+  )
+    return false;
+  if (
+    skip !== "colors" &&
+    f.colors.length &&
+    !f.colors.some((c) => p.colors.includes(c))
+  )
+    return false;
+  if (
+    skip !== "onSale" &&
+    f.onSale &&
+    discountPercent(p.mrpPaise, p.basePricePaise) <= 0
+  )
+    return false;
+  return true;
+}
+
+// Hides every scrollbar on the page while keeping scrolling fully functional
+function NoScrollbars() {
   return (
-    <div className="bg-neutral-950 text-white">
-      <div
-        className={`${WRAP} flex h-8 items-center justify-center gap-6 text-[11px] font-medium sm:justify-between`}
-      >
-        <span>Free delivery on orders over ₹999</span>
-        <span className="hidden sm:inline">Cash on delivery available</span>
-        <span className="hidden md:inline">Easy 7-day returns</span>
-      </div>
-    </div>
+    <style>{`
+      html, body, * { scrollbar-width: none; -ms-overflow-style: none; }
+      html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+    `}</style>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Hero slider (the one bold moment on the page)
+// Hero slider: every banner is a slide.
+// Desktop: info on the left 40%, image on the right 60%.
+// Mobile: image on top, info underneath (text never sits on a busy photo).
+// Autoplay is driven by the progress bar itself, so hover-pause is exact.
 // ---------------------------------------------------------------------------
 function HeroSlider({ slides }: { slides: Slide[] }) {
   const [index, setIndex] = useState(0);
@@ -178,136 +245,178 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
     [count],
   );
 
-  useEffect(() => {
-    if (count < 2 || paused) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = setTimeout(() => go(1), SLIDE_MS);
-    return () => clearTimeout(t);
-  }, [index, paused, count, go]);
-
   if (!count) return null;
 
   return (
     <div
-      className="relative isolate h-[400px] overflow-hidden rounded-xl bg-neutral-950 text-white sm:h-[440px] lg:h-full lg:min-h-[480px]"
+      className="relative isolate h-[70svh] w-full overflow-hidden bg-neutral-950 text-white lg:h-[clamp(460px,72vh,640px)]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
+      onTouchStart={(e) => {
+        touchX.current = e.touches[0].clientX;
+        setPaused(true);
+      }}
       onTouchEnd={(e) => {
+        setPaused(false);
         if (touchX.current === null) return;
         const dx = e.changedTouches[0].clientX - touchX.current;
         touchX.current = null;
-        if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+        if (count > 1 && Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
       }}
       role="region"
       aria-roledescription="carousel"
       aria-label="Featured offers"
     >
-      {slides.map((s, i) => {
-        const active = i === index;
-        const [top, accent] = splitTitle(s.title);
-        return (
-          <div
-            key={s.id}
-            aria-hidden={!active}
-            className={`absolute inset-0 transition-opacity duration-700 ${
-              active ? "z-10 opacity-100" : "pointer-events-none z-0 opacity-0"
-            }`}
-          >
-            {s.imageUrl && (
-              <img
-                src={s.imageUrl}
-                alt=""
-                fetchPriority={i === 0 ? "high" : "auto"}
-                loading={i === 0 ? "eager" : "lazy"}
-                className="absolute inset-0 h-full w-full object-cover object-[65%_center]"
-              />
-            )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/10 sm:bg-gradient-to-r sm:from-black/90 sm:via-black/55 sm:to-transparent" />
+      <style>{`
+        @keyframes heroProgress { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+        .hero-progress { animation-name: heroProgress; animation-timing-function: linear; animation-fill-mode: forwards; }
+        .hero-pad { padding-left: 1.25rem; padding-right: 1.25rem; }
+        @media (min-width: 640px) { .hero-pad { padding-left: 2rem; padding-right: 2rem; } }
+        @media (min-width: 1024px) { .hero-pad { padding-left: max(2rem, calc((100vw - 1440px) / 2 + 2rem)); padding-right: 2.5rem; } }
+        @media (prefers-reduced-motion: reduce) { .hero-progress { animation: none; transform: none; } }
+      `}</style>
 
+      {/* Slides share one grid cell and fill the full hero height */}
+      <div className="grid h-full grid-cols-1 grid-rows-1">
+        {slides.map((s, i) => {
+          const active = i === index;
+          const [top, accent] = splitTitle(s.title);
+          return (
             <div
-              className={`relative flex h-full flex-col justify-end p-6 transition-all duration-700 sm:justify-center sm:p-10 lg:p-14 ${
-                active ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+              key={s.id}
+              aria-hidden={!active}
+              className={`col-start-1 row-start-1 flex min-h-0 flex-col transition-opacity duration-700 lg:grid lg:grid-cols-[40%_60%] ${
+                active
+                  ? "z-10 opacity-100"
+                  : "pointer-events-none z-0 opacity-0"
               }`}
             >
-              <div className="max-w-xl">
-                <p className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-white/85">
-                  <span className="h-px w-8 bg-brand" />
-                  Shera Sports Wear
-                </p>
-                <h1 className="font-display text-[2.6rem] font-black italic uppercase leading-[0.92] tracking-tight sm:text-6xl lg:text-7xl">
-                  {top}
-                  {accent && (
-                    <>
-                      <br />
-                      <span className="text-brand">{accent}</span>
-                    </>
-                  )}
-                </h1>
-                {s.subtitle && (
-                  <p className="mt-4 max-w-md text-sm font-medium leading-relaxed text-white/90 sm:text-base">
-                    {s.subtitle}
-                  </p>
+              {/* Image: top 46% on mobile, right 60% on desktop */}
+              <div className="relative order-first shrink-0 basis-[46%] overflow-hidden lg:order-last lg:h-full lg:basis-auto">
+                {s.imageUrl && (
+                  <img
+                    src={s.imageUrl}
+                    alt=""
+                    fetchPriority={i === 0 ? "high" : "auto"}
+                    loading={i === 0 ? "eager" : "lazy"}
+                    className={`absolute inset-0 h-full w-full object-cover transition-transform duration-[1400ms] ease-out ${
+                      active ? "scale-100" : "scale-[1.06]"
+                    }`}
+                  />
                 )}
-                <div className="mt-6 flex flex-wrap items-center gap-3">
-                  <Link
-                    href={s.ctaUrl || "/products"}
-                    tabIndex={active ? 0 : -1}
-                    className={`inline-flex items-center gap-2 rounded-md bg-brand px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-hover ${FOCUS}`}
-                  >
-                    {s.ctaLabel || "Shop now"}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href="/collections"
-                    tabIndex={active ? 0 : -1}
-                    className={`inline-flex items-center rounded-md border border-white/70 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white hover:text-black ${FOCUS}`}
-                  >
-                    All collections
-                  </Link>
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-neutral-950 lg:bg-gradient-to-r lg:from-neutral-950 lg:via-neutral-950/10 lg:to-transparent" />
+              </div>
+
+              {/* Info */}
+              <div className="hero-pad relative flex min-h-0 flex-1 flex-col justify-center pb-10 lg:pb-12">
+                <div
+                  className={`max-w-lg transition-all delay-150 duration-700 ${
+                    active
+                      ? "translate-y-0 opacity-100"
+                      : "translate-y-4 opacity-0"
+                  }`}
+                >
+                  <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-white/90 lg:mb-3 lg:text-xs">
+                    <span className="h-0.5 w-7 bg-brand" />
+                    Shera Sports Wear
+                  </p>
+                  <h1 className="break-words font-display text-[clamp(1.9rem,8.5vw,2.6rem)] font-black italic uppercase leading-[0.92] tracking-tight lg:text-[3.5rem] xl:text-[4.25rem]">
+                    {top}
+                    {accent && (
+                      <>
+                        <br />
+                        <span className="text-brand">{accent}</span>
+                      </>
+                    )}
+                  </h1>
+                  {s.subtitle && (
+                    <p className="mt-2.5 line-clamp-2 max-w-md text-[13px] font-medium leading-snug text-white/90 lg:mt-4 lg:text-base lg:leading-relaxed">
+                      {s.subtitle}
+                    </p>
+                  )}
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5 lg:mt-6 lg:gap-3">
+                    <Link
+                      href={s.ctaUrl || "/products"}
+                      tabIndex={active ? 0 : -1}
+                      className={`inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-extrabold text-neutral-950 transition-colors hover:bg-brand-hover lg:px-6 lg:py-3 ${FOCUS}`}
+                    >
+                      {s.ctaLabel || "Shop now"}
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      href="/collections"
+                      tabIndex={active ? 0 : -1}
+                      className={`inline-flex items-center rounded-md border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-neutral-950 lg:px-6 lg:py-3 ${FOCUS}`}
+                    >
+                      All collections
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
 
+      {/* Navigator: one segment per slide with a live progress bar */}
       {count > 1 && (
         <>
-          <div className="absolute bottom-4 left-6 z-20 flex items-center gap-3 sm:left-10 lg:left-14">
-            <div className="flex gap-1.5">
+          <div className="hero-pad absolute inset-x-0 bottom-4 z-20 lg:right-[60%]">
+            <div className="flex gap-2">
               {slides.map((s, i) => (
                 <button
                   key={s.id}
                   onClick={() => setIndex(i)}
-                  aria-label={`Go to slide ${i + 1}`}
+                  aria-label={`Go to slide ${i + 1}: ${s.title}`}
                   aria-current={i === index}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === index ? "w-7 bg-brand" : "w-1.5 bg-white/45 hover:bg-white/80"
-                  }`}
-                />
+                  className={`group min-w-0 flex-1 text-left ${FOCUS}`}
+                >
+                  <span className="relative block h-[3px] overflow-hidden rounded-full bg-white/30">
+                    {i < index && (
+                      <span className="absolute inset-0 bg-white/70" />
+                    )}
+                    {i === index && (
+                      <span
+                        key={index}
+                        className="hero-progress absolute inset-0 origin-left bg-brand"
+                        style={{
+                          animationDuration: `${SLIDE_MS}ms`,
+                          animationPlayState: paused ? "paused" : "running",
+                        }}
+                        onAnimationEnd={() => go(1)}
+                      />
+                    )}
+                  </span>
+                  <span
+                    className={`mt-1.5 hidden truncate text-[11px] font-semibold transition-colors lg:block ${
+                      i === index
+                        ? "text-white"
+                        : "text-white/65 group-hover:text-white"
+                    }`}
+                  >
+                    {s.title}
+                  </span>
+                </button>
               ))}
             </div>
-            <span className="text-[11px] font-semibold tabular-nums text-white/70">
-              {String(index + 1).padStart(2, "0")} / {String(count).padStart(2, "0")}
-            </span>
           </div>
-          <div className="absolute bottom-3 right-4 z-20 hidden gap-2 sm:flex">
+
+          <div className="absolute bottom-4 right-6 z-20 hidden gap-2 lg:flex">
             <button
               onClick={() => go(-1)}
               aria-label="Previous slide"
-              className={`grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition-colors hover:bg-white hover:text-black ${FOCUS}`}
+              className={`grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-white hover:text-neutral-950 ${FOCUS}`}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               onClick={() => go(1)}
               aria-label="Next slide"
-              className={`grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white backdrop-blur transition-colors hover:bg-white hover:text-black ${FOCUS}`}
+              className={`grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-white hover:text-neutral-950 ${FOCUS}`}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </>
@@ -316,40 +425,8 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
   );
 }
 
-// Side promo tile that sits beside the hero on desktop (and under it on mobile)
-function PromoTile({ banner }: { banner: Banner }) {
-  return (
-    <Link
-      href={banner.ctaUrl || "/products"}
-      className={`group relative flex min-h-[150px] overflow-hidden rounded-xl bg-neutral-900 ${FOCUS}`}
-    >
-      {banner.imageUrl && (
-        <img
-          src={banner.imageUrl}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
-      <div className="relative z-10 flex w-full flex-col justify-end p-4">
-        <h3 className="font-display text-lg font-black italic uppercase leading-none text-white sm:text-xl">
-          {banner.title}
-        </h3>
-        {banner.subtitle && (
-          <p className="mt-1 line-clamp-1 text-xs text-white/80">{banner.subtitle}</p>
-        )}
-        <span className="mt-2.5 inline-flex items-center gap-1 text-xs font-bold text-white">
-          <span className="border-b border-brand pb-px">{banner.ctaLabel || "Explore"}</span>
-          <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1" />
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Category strip: one-tap access, with live product counts
+// Category strip (compact)
 // ---------------------------------------------------------------------------
 function CategoryStrip({
   categories,
@@ -361,35 +438,38 @@ function CategoryStrip({
   if (!categories.length) return null;
 
   return (
-    <section className={`${WRAP} pt-5`} aria-label="Shop by category">
-      {/* Desktop tiles */}
+    <section className={`${WRAP} pt-3`} aria-label="Shop by category">
       <div
-        className="hidden gap-3 md:grid"
-        style={{ gridTemplateColumns: `repeat(${Math.min(categories.length, 6)}, minmax(0, 1fr))` }}
+        className="hidden gap-2.5 md:grid"
+        style={{
+          gridTemplateColumns: `repeat(${Math.min(categories.length, 6)}, minmax(0, 1fr))`,
+        }}
       >
         {categories.map((c) => (
           <Link
             key={c.id}
             href={`/categories/${c.slug}`}
-            className={`group relative flex h-[84px] overflow-hidden rounded-lg bg-neutral-100 ${FOCUS}`}
+            className={`group relative flex h-[60px] overflow-hidden rounded-md bg-neutral-100 ${FOCUS}`}
           >
             {c.image && (
               <img
                 src={c.image}
                 alt=""
                 loading="lazy"
-                className="absolute right-0 top-0 h-full w-[55%] object-cover transition-transform duration-500 group-hover:scale-110"
+                className="absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110"
                 style={{
-                  maskImage: "linear-gradient(to right, transparent, black 45%)",
-                  WebkitMaskImage: "linear-gradient(to right, transparent, black 45%)",
+                  maskImage:
+                    "linear-gradient(to right, transparent, black 45%)",
+                  WebkitMaskImage:
+                    "linear-gradient(to right, transparent, black 45%)",
                 }}
               />
             )}
-            <div className="relative z-10 flex flex-col justify-center pl-4">
-              <h3 className="font-display text-[15px] font-black uppercase leading-tight text-neutral-900">
+            <div className="relative z-10 flex flex-col justify-center pl-3.5">
+              <h3 className="font-display text-[13px] font-black uppercase leading-tight text-neutral-950">
                 {c.name}
               </h3>
-              <span className="mt-0.5 text-[11px] font-medium text-neutral-600">
+              <span className="text-[11px] font-medium text-neutral-600">
                 {counts[c.id] ?? 0} styles
               </span>
             </div>
@@ -397,22 +477,27 @@ function CategoryStrip({
         ))}
       </div>
 
-      {/* Mobile scroller */}
-      <div className={`${HIDE_SCROLLBAR} -mx-4 flex gap-4 overflow-x-auto px-4 md:hidden`}>
+      <div
+        className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3.5 overflow-x-auto px-4 md:hidden`}
+      >
         {categories.map((c) => (
           <Link
             key={c.id}
             href={`/categories/${c.slug}`}
-            className="flex w-[68px] shrink-0 flex-col items-center gap-1.5"
+            className="flex w-[58px] shrink-0 flex-col items-center gap-1"
           >
-            <span className="grid h-[64px] w-[64px] place-items-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
+            <span className="grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full border border-neutral-300 bg-neutral-100">
               {c.image ? (
-                <img src={c.image} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={c.image}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               ) : (
-                <Tag className="h-5 w-5 text-neutral-400" />
+                <Tag className="h-5 w-5 text-neutral-500" />
               )}
             </span>
-            <span className="text-center text-[11px] font-semibold text-neutral-800">
+            <span className="text-center text-[11px] font-semibold text-neutral-900">
               {c.name}
             </span>
           </Link>
@@ -423,21 +508,15 @@ function CategoryStrip({
 }
 
 // ---------------------------------------------------------------------------
-// Product card
+// Product card (compact)
 // ---------------------------------------------------------------------------
-function ProductCard({
-  product,
-  categoryName,
-}: {
-  product: Product;
-  categoryName?: string;
-}) {
+function ProductCard({ product }: { product: Product }) {
   const { addItem, removeItem, isInWishlist } = useWishlist();
   const isSaved = isInWishlist(product.id);
   const discount = discountPercent(product.mrpPaise, product.basePricePaise);
   const image = product.images?.[0];
   const hoverImage = product.images?.[1];
-  const extraColors = Math.max(0, (product.colors?.length ?? 0) - 4);
+  const extraColors = Math.max(0, (product.colors?.length ?? 0) - 3);
 
   const toggleWishlist = () => {
     if (isSaved) {
@@ -457,16 +536,19 @@ function ProductCard({
   };
 
   return (
-    <div className="group relative flex flex-col">
-      <Link href={`/products/${product.slug}`} className={`block rounded-lg ${FOCUS}`}>
-        <div className="relative aspect-[4/5] overflow-hidden rounded-lg bg-neutral-100">
+    <div className="group relative">
+      <Link
+        href={`/products/${product.slug}`}
+        className={`block rounded-md ${FOCUS}`}
+      >
+        <div className="relative aspect-[6/7] overflow-hidden rounded-md bg-neutral-100">
           {image ? (
             <>
               <img
                 src={image}
                 alt={product.name}
                 loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+                className="absolute inset-0 h-full w-full object-cover"
               />
               {hoverImage && (
                 <img
@@ -478,62 +560,57 @@ function ProductCard({
               )}
             </>
           ) : (
-            <div className="grid h-full w-full place-items-center text-neutral-300">
-              <Tag className="h-8 w-8" />
+            <div className="grid h-full w-full place-items-center text-neutral-400">
+              <Tag className="h-7 w-7" />
             </div>
           )}
 
           {discount > 0 && (
-            <span className="absolute left-2 top-2 rounded bg-brand px-1.5 py-0.5 text-[10px] font-bold text-white">
+            <span className="absolute left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-neutral-950">
               {discount}% off
             </span>
           )}
 
           {product.sizes?.length > 0 && (
-            <div className="absolute inset-x-0 bottom-0 hidden translate-y-full bg-white/95 px-2.5 py-2 text-[11px] font-semibold text-neutral-800 transition-transform duration-300 group-hover:translate-y-0 md:block">
-              <span className="text-neutral-500">Sizes </span>
+            <div className="absolute inset-x-0 bottom-0 hidden translate-y-full bg-white/95 px-2 py-1.5 text-[10.5px] font-semibold text-neutral-900 transition-transform duration-300 group-hover:translate-y-0 md:block">
               {product.sizes.join("  ")}
             </div>
           )}
         </div>
 
-        <div className="mt-2.5 flex flex-col gap-0.5">
-          {categoryName && (
-            <p className="text-[11px] font-medium text-neutral-500">{categoryName}</p>
-          )}
-          <h3 className="line-clamp-1 text-[13px] font-bold text-neutral-900">
+        <div className="mt-1.5">
+          <h3 className="line-clamp-1 text-[12.5px] font-semibold leading-tight text-neutral-950">
             {product.name}
           </h3>
-          <div className="flex flex-wrap items-baseline gap-x-1.5">
-            <span className="text-[14px] font-black text-neutral-950">
-              {formatINR(product.basePricePaise)}
-            </span>
-            {discount > 0 && (
-              <>
-                <span className="text-[11px] text-neutral-400 line-through">
+          <div className="mt-0.5 flex items-center justify-between gap-1.5">
+            <p className="flex items-baseline gap-1.5">
+              <span className="text-[13px] font-extrabold text-neutral-950">
+                {formatINR(product.basePricePaise)}
+              </span>
+              {discount > 0 && (
+                <span className="text-[11px] text-neutral-500 line-through">
                   {formatINR(product.mrpPaise)}
                 </span>
-                <span className="text-[11px] font-semibold text-emerald-700">
-                  Save {formatINR(product.mrpPaise - product.basePricePaise)}
-                </span>
-              </>
+              )}
+            </p>
+            {product.colors?.length > 0 && (
+              <span className="flex items-center gap-0.5">
+                {product.colors.slice(0, 3).map((c, i) => (
+                  <span
+                    key={`${c}-${i}`}
+                    title={c}
+                    className="h-2.5 w-2.5 rounded-full border border-neutral-400"
+                    style={{ background: colorHex(c) }}
+                  />
+                ))}
+                {extraColors > 0 && (
+                  <span className="text-[10px] font-semibold text-neutral-600">
+                    +{extraColors}
+                  </span>
+                )}
+              </span>
             )}
           </div>
-          {product.colors?.length > 0 && (
-            <div className="mt-1 flex items-center gap-1">
-              {product.colors.slice(0, 4).map((c, i) => (
-                <span
-                  key={`${c}-${i}`}
-                  title={c}
-                  className="h-3 w-3 rounded-full border border-neutral-300"
-                  style={{ background: colorHex(c) }}
-                />
-              ))}
-              {extraColors > 0 && (
-                <span className="text-[10px] font-medium text-neutral-500">+{extraColors}</span>
-              )}
-            </div>
-          )}
         </div>
       </Link>
 
@@ -542,16 +619,286 @@ function ProductCard({
         onClick={toggleWishlist}
         aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
         aria-pressed={isSaved}
-        className={`absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-neutral-600 shadow-sm transition-colors hover:text-red-500 ${FOCUS}`}
+        className={`absolute right-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full bg-white text-neutral-700 shadow-sm transition-colors hover:text-red-600 ${FOCUS}`}
       >
-        <Heart className={`h-4 w-4 ${isSaved ? "fill-red-500 text-red-500" : ""}`} />
+        <Heart
+          className={`h-3.5 w-3.5 ${isSaved ? "fill-red-600 text-red-600" : ""}`}
+        />
       </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Tabbed showcase: switch between lists in place, no page loads
+// Filters (compact)
+// ---------------------------------------------------------------------------
+function FilterGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="border-b border-neutral-200 py-3 first:pt-0 last:border-b-0">
+      <legend className="mb-1.5 text-[12px] font-extrabold text-neutral-950">
+        {title}
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
+function CheckRow({
+  checked,
+  onChange,
+  label,
+  count,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  count: number;
+}) {
+  const dim = count === 0 && !checked;
+  return (
+    <label
+      className={`flex cursor-pointer items-center gap-2 py-[3px] text-[12.5px] ${
+        dim ? "text-neutral-400" : "text-neutral-900"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-3.5 w-3.5 rounded border-neutral-400 accent-brand"
+      />
+      <span className="flex-1">{label}</span>
+      <span className="text-[11px] tabular-nums text-neutral-500">{count}</span>
+    </label>
+  );
+}
+
+function FilterPanel({
+  products,
+  filters,
+  onChange,
+  categoryNames,
+}: {
+  products: Product[];
+  filters: Filters;
+  onChange: (f: Filters) => void;
+  categoryNames: Record<string, string>;
+}) {
+  const catIds = Object.keys(categoryNames).filter((id) =>
+    products.some((p) => p.categoryId === id),
+  );
+  const sizes = Array.from(new Set(products.flatMap((p) => p.sizes))).sort(
+    (a, b) => sizeRank(a) - sizeRank(b),
+  );
+  const colors = Array.from(new Set(products.flatMap((p) => p.colors)));
+
+  const count = (skip: keyof Filters, test: (p: Product) => boolean) =>
+    products.filter((p) => matches(p, filters, skip) && test(p)).length;
+
+  const toggle = (key: "categories" | "sizes" | "colors", val: string) => {
+    const list = filters[key];
+    onChange({
+      ...filters,
+      [key]: list.includes(val)
+        ? list.filter((x) => x !== val)
+        : [...list, val],
+    });
+  };
+
+  return (
+    <div>
+      {catIds.length > 1 && (
+        <FilterGroup title="Category">
+          {catIds.map((id) => (
+            <CheckRow
+              key={id}
+              label={categoryNames[id]}
+              checked={filters.categories.includes(id)}
+              onChange={() => toggle("categories", id)}
+              count={count("categories", (p) => p.categoryId === id)}
+            />
+          ))}
+        </FilterGroup>
+      )}
+
+      <FilterGroup title="Price">
+        {PRICE_BUCKETS.map((b) => (
+          <CheckRow
+            key={b.key}
+            label={b.label}
+            checked={filters.price === b.key}
+            onChange={() =>
+              onChange({
+                ...filters,
+                price: filters.price === b.key ? null : b.key,
+              })
+            }
+            count={count(
+              "price",
+              (p) => p.basePricePaise >= b.min && p.basePricePaise <= b.max,
+            )}
+          />
+        ))}
+      </FilterGroup>
+
+      {sizes.length > 0 && (
+        <FilterGroup title="Size">
+          <div className="flex flex-wrap gap-1.5">
+            {sizes.map((s) => {
+              const on = filters.sizes.includes(s);
+              const n = count("sizes", (p) => p.sizes.includes(s));
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggle("sizes", s)}
+                  className={`min-w-[36px] rounded border px-2 py-1 text-[11px] font-bold transition-colors ${FOCUS} ${
+                    on
+                      ? "border-neutral-950 bg-neutral-950 text-white"
+                      : n === 0
+                        ? "border-neutral-200 text-neutral-400"
+                        : "border-neutral-400 text-neutral-900 hover:border-neutral-950"
+                  }`}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        </FilterGroup>
+      )}
+
+      {colors.length > 0 && (
+        <FilterGroup title="Colour">
+          <div className="flex flex-wrap gap-2">
+            {colors.map((c) => {
+              const on = filters.colors.includes(c);
+              const n = count("colors", (p) => p.colors.includes(c));
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  title={`${c} (${n})`}
+                  aria-label={`${c}, ${n} styles`}
+                  aria-pressed={on}
+                  onClick={() => toggle("colors", c)}
+                  className={`h-6 w-6 rounded-full border transition-all ${FOCUS} ${
+                    on
+                      ? "border-neutral-950 ring-2 ring-neutral-950 ring-offset-1"
+                      : "border-neutral-400 hover:scale-110"
+                  } ${n === 0 && !on ? "opacity-30" : ""}`}
+                  style={{ background: colorHex(c) }}
+                />
+              );
+            })}
+          </div>
+        </FilterGroup>
+      )}
+
+      <FilterGroup title="Offers">
+        <CheckRow
+          label="On sale"
+          checked={filters.onSale}
+          onChange={() => onChange({ ...filters, onSale: !filters.onSale })}
+          count={count(
+            "onSale",
+            (p) => discountPercent(p.mrpPaise, p.basePricePaise) > 0,
+          )}
+        />
+      </FilterGroup>
+    </div>
+  );
+}
+
+// Mobile bottom sheet
+function FilterSheet({
+  open,
+  onClose,
+  onClear,
+  resultCount,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onClear: () => void;
+  resultCount: number;
+  children: React.ReactNode;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] lg:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Filters"
+    >
+      <style>{`
+        @keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
+        @media (prefers-reduced-motion: no-preference) { .sheet-up { animation: sheetUp 260ms ease-out } }
+      `}</style>
+      <button
+        aria-label="Close filters"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60"
+        tabIndex={-1}
+      />
+      <div className="sheet-up absolute inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-2xl bg-white">
+        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+          <h2 className="text-base font-black text-neutral-950">Filters</h2>
+          <button
+            ref={closeRef}
+            onClick={onClose}
+            aria-label="Close"
+            className={`grid h-9 w-9 place-items-center rounded-full text-neutral-900 hover:bg-neutral-100 ${FOCUS}`}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
+        <div className="flex gap-3 border-t border-neutral-200 p-3">
+          <button
+            onClick={onClear}
+            className={`rounded-md border border-neutral-400 px-5 py-3 text-sm font-bold text-neutral-950 ${FOCUS}`}
+          >
+            Clear all
+          </button>
+          <button
+            onClick={onClose}
+            className={`flex-1 rounded-md bg-neutral-950 px-5 py-3 text-sm font-bold text-white ${FOCUS}`}
+          >
+            Show {resultCount} {resultCount === 1 ? "style" : "styles"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Showcase: tabs + filters + sort + load more, all in place
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
@@ -561,83 +908,296 @@ function Showcase({
   categoryNames: Record<string, string>;
 }) {
   const [activeKey, setActiveKey] = useState(tabs[0]?.key);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [sort, setSort] = useState<SortKey>("featured");
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
   const tab = tabs.find((t) => t.key === activeKey) ?? tabs[0];
+  const tabProducts = tab?.products ?? [];
+
+  const results = useMemo(() => {
+    const list = tabProducts.filter((p) => matches(p, filters));
+    const d = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
+    if (sort === "price-asc")
+      list.sort((a, b) => a.basePricePaise - b.basePricePaise);
+    if (sort === "price-desc")
+      list.sort((a, b) => b.basePricePaise - a.basePricePaise);
+    if (sort === "discount") list.sort((a, b) => d(b) - d(a));
+    return list;
+  }, [tabProducts, filters, sort]);
+
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+
   if (!tab) return null;
 
-  const items = tab.products.slice(0, SHOWCASE_LIMIT);
+  const update = (f: Filters) => {
+    setFilters(f);
+    setVisible(PAGE_SIZE);
+  };
+  const clearAll = () => update(EMPTY_FILTERS);
+
+  const chips: { key: string; label: string; remove: () => void }[] = [
+    ...filters.categories.map((id) => ({
+      key: `c-${id}`,
+      label: categoryNames[id] ?? id,
+      remove: () =>
+        update({
+          ...filters,
+          categories: filters.categories.filter((x) => x !== id),
+        }),
+    })),
+    ...(filters.price
+      ? [
+          {
+            key: "price",
+            label:
+              PRICE_BUCKETS.find((b) => b.key === filters.price)?.label ??
+              "Price",
+            remove: () => update({ ...filters, price: null }),
+          },
+        ]
+      : []),
+    ...filters.sizes.map((s) => ({
+      key: `s-${s}`,
+      label: `Size ${s}`,
+      remove: () =>
+        update({ ...filters, sizes: filters.sizes.filter((x) => x !== s) }),
+    })),
+    ...filters.colors.map((c) => ({
+      key: `col-${c}`,
+      label: c,
+      remove: () =>
+        update({ ...filters, colors: filters.colors.filter((x) => x !== c) }),
+    })),
+    ...(filters.onSale
+      ? [
+          {
+            key: "sale",
+            label: "On sale",
+            remove: () => update({ ...filters, onSale: false }),
+          },
+        ]
+      : []),
+  ];
+
+  const shown = results.slice(0, visible);
+  const remaining = results.length - shown.length;
 
   return (
-    <section className={`${WRAP} pt-8`} aria-label="Shop products">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <h2 className="font-display text-2xl font-black uppercase leading-none tracking-tight sm:text-3xl">
+    <section className={`${WRAP} pt-5`} aria-label="Shop products">
+      {/* Heading + tabs share one row on desktop */}
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-5">
+        <h2 className="font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
           Shop the drop
         </h2>
+        <div
+          role="tablist"
+          aria-label="Product lists"
+          className={`${HIDE_SCROLLBAR} -mx-4 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0`}
+        >
+          {tabs.map((t) => {
+            const on = t.key === tab.key;
+            return (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={on}
+                onClick={() => {
+                  setActiveKey(t.key);
+                  setVisible(PAGE_SIZE);
+                }}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${FOCUS} ${
+                  on
+                    ? "bg-neutral-950 text-white"
+                    : "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
+                }`}
+              >
+                {t.label}
+                <span
+                  className={`ml-1.5 text-[11px] ${on ? "text-white/70" : "text-neutral-500"}`}
+                >
+                  {t.products.length}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         <Link
           href={tab.href}
-          className={`hidden items-center gap-1 text-sm font-bold text-neutral-900 transition-colors hover:text-brand sm:inline-flex ${FOCUS}`}
+          className={`hidden shrink-0 items-center gap-1 text-[13px] font-bold text-neutral-950 hover:underline lg:inline-flex ${FOCUS}`}
         >
-          View all {tab.label.toLowerCase()} <ArrowRight className="h-3.5 w-3.5" />
+          View all <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Product lists"
-        className={`${HIDE_SCROLLBAR} -mx-4 mb-5 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0`}
-      >
-        {tabs.map((t) => {
-          const on = t.key === tab.key;
-          return (
-            <button
-              key={t.key}
-              role="tab"
-              aria-selected={on}
-              onClick={() => setActiveKey(t.key)}
-              className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-bold transition-colors ${FOCUS} ${
-                on
-                  ? "bg-neutral-900 text-white"
-                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
-              }`}
-            >
-              {t.label}
-              <span className={`ml-1.5 text-[11px] ${on ? "text-white/60" : "text-neutral-400"}`}>
-                {t.products.length}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div
-        role="tabpanel"
-        className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 lg:grid-cols-5"
-      >
-        {items.map((p, i) => (
-          <div
-            key={`${tab.key}-${p.id}`}
-            className={
-              i >= 9 ? "hidden lg:block" : i >= 6 ? "hidden sm:block" : undefined
-            }
-          >
-            <ProductCard product={p} categoryName={categoryNames[p.categoryId]} />
+      <div className="lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-6">
+        {/* Desktop sidebar */}
+        <aside
+          className="hidden self-start lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+          aria-label="Filters"
+        >
+          <div className="mb-2.5 flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-[13px] font-black text-neutral-950">
+              <SlidersHorizontal className="h-3.5 w-3.5" /> Filters
+            </h3>
+            {chips.length > 0 && (
+              <button
+                onClick={clearAll}
+                className={`text-[12px] font-bold text-neutral-950 underline underline-offset-2 ${FOCUS}`}
+              >
+                Clear all
+              </button>
+            )}
           </div>
-        ))}
+          <FilterPanel
+            products={tabProducts}
+            filters={filters}
+            onChange={update}
+            categoryNames={categoryNames}
+          />
+        </aside>
+
+        <div className="min-w-0">
+          {/* Toolbar */}
+          <div className="mb-2.5 flex items-center gap-2">
+            <button
+              onClick={() => setSheetOpen(true)}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-neutral-400 px-3 py-1.5 text-[12.5px] font-bold text-neutral-950 lg:hidden ${FOCUS}`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filters
+              {chips.length > 0 && (
+                <span className="grid h-4 min-w-4 place-items-center rounded-full bg-brand px-1 text-[10px] font-extrabold text-neutral-950">
+                  {chips.length}
+                </span>
+              )}
+            </button>
+
+            <p className="text-[12.5px] text-neutral-600" aria-live="polite">
+              <span className="font-extrabold text-neutral-950">
+                {results.length}
+              </span>{" "}
+              {results.length === 1 ? "style" : "styles"}
+            </p>
+
+            <div className="relative ml-auto">
+              <label className="sr-only" htmlFor="home-sort">
+                Sort by
+              </label>
+              <select
+                id="home-sort"
+                value={sort}
+                onChange={(e) => {
+                  setSort(e.target.value as SortKey);
+                  setVisible(PAGE_SIZE);
+                }}
+                className={`appearance-none rounded-md border border-neutral-400 bg-white py-1.5 pl-3 pr-8 text-[12.5px] font-bold text-neutral-950 ${FOCUS}`}
+              >
+                {SORTS.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-700" />
+            </div>
+          </div>
+
+          {/* Active filter chips: one scrolling line on mobile, wrapping on desktop */}
+          {chips.length > 0 && (
+            <div
+              className={`${HIDE_SCROLLBAR} -mx-4 mb-3 flex items-center gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0`}
+            >
+              {chips.map((c) => (
+                <button
+                  key={c.key}
+                  onClick={c.remove}
+                  aria-label={`Remove filter ${c.label}`}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full bg-neutral-950 py-1 pl-2.5 pr-1.5 text-[11.5px] font-semibold text-white transition-colors hover:bg-neutral-800 ${FOCUS}`}
+                >
+                  {c.label}
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
+              <button
+                onClick={clearAll}
+                className={`shrink-0 px-1 text-[12px] font-bold text-neutral-950 underline underline-offset-2 ${FOCUS}`}
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+
+          {/* Grid */}
+          {shown.length > 0 ? (
+            <div
+              role="tabpanel"
+              className="grid grid-cols-2 gap-x-2.5 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-3 lg:gap-y-5 xl:grid-cols-5"
+            >
+              {shown.map((p) => (
+                <ProductCard key={`${tab.key}-${p.id}`} product={p} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid place-items-center rounded-lg border border-dashed border-neutral-400 px-6 py-10 text-center">
+              <p className="text-base font-bold text-neutral-950">
+                No styles match these filters
+              </p>
+              <p className="mt-1 text-sm text-neutral-600">
+                Remove a filter or switch to another list.
+              </p>
+              <button
+                onClick={clearAll}
+                className={`mt-3 rounded-md bg-neutral-950 px-5 py-2 text-sm font-bold text-white ${FOCUS}`}
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
+
+          {shown.length > 0 && (
+            <div className="mt-5 flex justify-center">
+              {remaining > 0 ? (
+                <button
+                  onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                  className={`rounded-md border border-neutral-950 px-5 py-2 text-[13px] font-bold text-neutral-950 transition-colors hover:bg-neutral-950 hover:text-white ${FOCUS}`}
+                >
+                  Show {Math.min(remaining, PAGE_SIZE)} more ({remaining} left)
+                </button>
+              ) : (
+                <Link
+                  href={tab.href}
+                  className={`inline-flex items-center gap-1.5 text-[13px] font-bold text-neutral-950 hover:underline ${FOCUS}`}
+                >
+                  See the full {tab.label.toLowerCase()} range{" "}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="mt-6 flex justify-center sm:hidden">
-        <Link
-          href={tab.href}
-          className={`inline-flex items-center gap-1.5 rounded-md border border-neutral-900 px-5 py-2.5 text-sm font-bold ${FOCUS}`}
-        >
-          View all {tab.label.toLowerCase()} <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
+      <FilterSheet
+        open={sheetOpen}
+        onClose={closeSheet}
+        onClear={clearAll}
+        resultCount={results.length}
+      >
+        <FilterPanel
+          products={tabProducts}
+          filters={filters}
+          onChange={update}
+          categoryNames={categoryNames}
+        />
+      </FilterSheet>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Collection cards
+// Collection cards (compact: scroller on mobile, 3-up on desktop)
 // ---------------------------------------------------------------------------
 function CollectionCards({
   collections,
@@ -649,31 +1209,33 @@ function CollectionCards({
   if (!collections.length) return null;
 
   return (
-    <section className={`${WRAP} pt-10`} aria-label="Collections">
-      <h2 className="mb-4 font-display text-2xl font-black uppercase leading-none tracking-tight sm:text-3xl">
+    <section className={`${WRAP} pt-8`} aria-label="Collections">
+      <h2 className="mb-2.5 font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
         Shop by collection
       </h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        className={`${HIDE_SCROLLBAR} -mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3`}
+      >
         {collections.slice(0, 6).map((c) => (
           <Link
             key={c.id}
             href={`/collections/${c.slug}`}
-            className={`group relative flex h-[150px] overflow-hidden rounded-xl bg-neutral-900 ${FOCUS}`}
+            className={`group relative flex h-[96px] w-[72%] shrink-0 snap-start overflow-hidden rounded-lg bg-neutral-900 sm:w-auto ${FOCUS}`}
           >
             {c.image && (
               <img
                 src={c.image}
                 alt=""
                 loading="lazy"
-                className="absolute inset-0 h-full w-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-105"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
               />
             )}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
-            <div className="relative z-10 flex w-full flex-col justify-end p-5">
-              <h3 className="font-display text-2xl font-black italic uppercase leading-none text-white">
+            <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/55 to-black/10" />
+            <div className="relative z-10 flex w-full flex-col justify-end p-3.5">
+              <h3 className="font-display text-lg font-black italic uppercase leading-none text-white">
                 {c.name}
               </h3>
-              <p className="mt-1.5 text-xs text-white/80">
+              <p className="mt-1 line-clamp-1 text-[11.5px] font-medium text-white/90">
                 {counts[c.id] ?? 0} styles
                 {c.description ? ` · ${c.description}` : ""}
               </p>
@@ -686,18 +1248,25 @@ function CollectionCards({
 }
 
 // ---------------------------------------------------------------------------
-// Features strip
+// Features strip (compact)
 // ---------------------------------------------------------------------------
 function FeaturesStrip() {
   return (
-    <section className={`${WRAP} mt-10 border-t border-neutral-200 py-7`}>
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4">
+    <section className={`${WRAP} mt-8 border-t border-neutral-300 py-4`}>
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-3 lg:grid-cols-4">
         {FEATURES.map(({ icon: Icon, title, sub }) => (
-          <li key={title} className="flex items-start gap-3">
-            <Icon className="h-6 w-6 shrink-0 text-neutral-900" strokeWidth={1.5} />
+          <li key={title} className="flex items-center gap-2.5">
+            <Icon
+              className="h-5 w-5 shrink-0 text-neutral-950"
+              strokeWidth={1.6}
+            />
             <div>
-              <p className="text-[13px] font-bold text-neutral-900">{title}</p>
-              <p className="mt-0.5 text-[12px] text-neutral-500">{sub}</p>
+              <p className="text-[12px] font-bold leading-tight text-neutral-950">
+                {title}
+              </p>
+              <p className="text-[11px] leading-tight text-neutral-600">
+                {sub}
+              </p>
             </div>
           </li>
         ))}
@@ -711,21 +1280,21 @@ function FeaturesStrip() {
 // ---------------------------------------------------------------------------
 function PageSkeleton() {
   return (
-    <div className="animate-pulse bg-white" aria-busy="true" aria-label="Loading store">
-      <div className="h-8 bg-neutral-900" />
-      <div className={`${WRAP} grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_340px]`}>
-        <div className="h-[400px] rounded-xl bg-neutral-200 sm:h-[440px] lg:h-[480px]" />
-        <div className="hidden grid-rows-2 gap-3 lg:grid">
-          <div className="rounded-xl bg-neutral-200" />
-          <div className="rounded-xl bg-neutral-200" />
-        </div>
-      </div>
-      <div className={`${WRAP} grid grid-cols-2 gap-3 pt-6 sm:grid-cols-3 lg:grid-cols-5`}>
+    <div
+      className="animate-pulse bg-white"
+      aria-busy="true"
+      aria-label="Loading store"
+    >
+      <NoScrollbars />
+      <div className="h-[70svh] bg-neutral-200 lg:h-[clamp(460px,72vh,640px)]" />
+      <div
+        className={`${WRAP} grid grid-cols-2 gap-2.5 pt-5 sm:grid-cols-3 lg:grid-cols-5`}
+      >
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i}>
-            <div className="aspect-[4/5] rounded-lg bg-neutral-200" />
-            <div className="mt-2 h-3 w-3/4 rounded bg-neutral-200" />
-            <div className="mt-1.5 h-3 w-1/3 rounded bg-neutral-200" />
+            <div className="aspect-[6/7] rounded-md bg-neutral-200" />
+            <div className="mt-1.5 h-3 w-3/4 rounded bg-neutral-200" />
+            <div className="mt-1 h-3 w-1/3 rounded bg-neutral-200" />
           </div>
         ))}
       </div>
@@ -736,14 +1305,17 @@ function PageSkeleton() {
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="grid min-h-[60vh] place-items-center bg-white px-4 text-center">
+      <NoScrollbars />
       <div>
-        <p className="text-lg font-bold text-neutral-900">We couldn’t load the store</p>
-        <p className="mt-1 text-sm text-neutral-500">
+        <p className="text-lg font-bold text-neutral-950">
+          We couldn’t load the store
+        </p>
+        <p className="mt-1 text-sm text-neutral-600">
           Check your connection and try again.
         </p>
         <button
           onClick={onRetry}
-          className={`mt-5 inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-hover ${FOCUS}`}
+          className={`mt-4 inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-extrabold text-neutral-950 hover:bg-brand-hover ${FOCUS}`}
         >
           <RefreshCw className="h-4 w-4" /> Try again
         </button>
@@ -771,15 +1343,20 @@ export default function StorefrontHomePage() {
         const byOrder = (name: string) =>
           getDocs(query(collection(db, name), orderBy("sortOrder", "asc")));
 
-        const [bannersSnap, productsSnap, categoriesSnap, collectionsSnap, sectionsRes] =
-          await Promise.all([
-            byOrder("banners"),
-            getDocs(query(collection(db, "products"), limit(60))),
-            byOrder("categories"),
-            byOrder("collections"),
-            // CMS sections are optional: never let them break the page
-            byOrder("homepageSections").catch(() => null),
-          ]);
+        const [
+          bannersSnap,
+          productsSnap,
+          categoriesSnap,
+          collectionsSnap,
+          sectionsSnap,
+        ] = await Promise.all([
+          byOrder("banners"),
+          getDocs(query(collection(db, "products"), limit(60))),
+          byOrder("categories"),
+          byOrder("collections"),
+          // CMS sections are optional: never let them break the page
+          byOrder("homepageSections").catch(() => null),
+        ]);
 
         const banners: Banner[] = bannersSnap.docs
           .map((d) => {
@@ -811,7 +1388,9 @@ export default function StorefrontHomePage() {
               mrpPaise: p.mrpPaise || 0,
               images: Array.isArray(p.images) ? p.images : [],
               categoryId: p.categoryId || "",
-              collectionIds: Array.isArray(p.collectionIds) ? p.collectionIds : [],
+              collectionIds: Array.isArray(p.collectionIds)
+                ? p.collectionIds
+                : [],
               colors: Array.isArray(p.colors) ? p.colors : [],
               sizes: Array.isArray(p.sizes) ? p.sizes : [],
               soldCount: typeof p.soldCount === "number" ? p.soldCount : 0,
@@ -822,7 +1401,12 @@ export default function StorefrontHomePage() {
           .filter((d) => d.data().status === "active")
           .map((d) => {
             const c = d.data();
-            return { id: d.id, name: c.name || "", slug: c.slug || d.id, image: c.image || null };
+            return {
+              id: d.id,
+              name: c.name || "",
+              slug: c.slug || d.id,
+              image: c.image || null,
+            };
           });
 
         const collections: Collection[] = collectionsSnap.docs
@@ -838,12 +1422,17 @@ export default function StorefrontHomePage() {
             };
           });
 
-        const sections: Section[] = (sectionsRes?.docs ?? []).map((d) => {
+        const sections: Section[] = (sectionsSnap?.docs ?? []).map((d) => {
           const s = d.data();
-          return { id: d.id, type: s.type || d.id, isActive: s.isActive !== false };
+          return {
+            id: d.id,
+            type: s.type || d.id,
+            isActive: s.isActive !== false,
+          };
         });
 
-        if (!cancelled) setData({ banners, products, categories, collections, sections });
+        if (!cancelled)
+          setData({ banners, products, categories, collections, sections });
       } catch (error) {
         console.error("Failed to load storefront data:", error);
         if (!cancelled) setFailed(true);
@@ -859,37 +1448,36 @@ export default function StorefrontHomePage() {
   }, [attempt]);
 
   if (loading) return <PageSkeleton />;
-  if (failed || !data) return <ErrorState onRetry={() => setAttempt((n) => n + 1)} />;
+  if (failed || !data)
+    return <ErrorState onRetry={() => setAttempt((n) => n + 1)} />;
 
-  // A CMS section is shown unless an admin explicitly turned it off
   const sectionOn = (type: string) => {
     const s = data.sections.find((x) => x.type === type);
     return s ? s.isActive : true;
   };
 
-  // ---- Hero + side promos
-  const heroBanners = data.banners.filter((b) => b.placement === "home_hero");
-  const heroSlides: Slide[] = heroBanners.length
-    ? heroBanners.map((b) => ({
-        id: b.id,
-        title: b.title,
-        subtitle: b.subtitle,
-        imageUrl: b.imageUrl,
-        ctaLabel: b.ctaLabel,
-        ctaUrl: b.ctaUrl,
-      }))
-    : [
-        {
-          id: "fallback-hero",
-          title: "Gear For A Stronger You",
-          subtitle:
-            "Premium sports wear for training, running, gym and everyday performance.",
-          imageUrl: "https://placehold.co/1920x800/111111/FF6B00?text=Shera+Sports",
-          ctaLabel: "Shop now",
-          ctaUrl: "/products",
-        },
-      ];
-  const promos = data.banners.filter((b) => b.placement === "home_strip").slice(0, 2);
+  // ---- Hero: every active banner is a slide (home_hero first, then the rest)
+  const heroFirst = data.banners.filter((b) => b.placement === "home_hero");
+  const others = data.banners.filter((b) => b.placement !== "home_hero");
+  const heroSlides: Slide[] = [...heroFirst, ...others].map((b) => ({
+    id: b.id,
+    title: b.title,
+    subtitle: b.subtitle,
+    imageUrl: b.imageUrl,
+    ctaLabel: b.ctaLabel,
+    ctaUrl: b.ctaUrl,
+  }));
+  if (!heroSlides.length) {
+    heroSlides.push({
+      id: "fallback-hero",
+      title: "Gear For A Stronger You",
+      subtitle:
+        "Premium sports wear for training, running, gym and everyday performance.",
+      imageUrl: "https://placehold.co/1200x900/111111/FF6B00?text=Shera+Sports",
+      ctaLabel: "Shop now",
+      ctaUrl: "/products",
+    });
+  }
 
   // ---- Lookups
   const categoryNames: Record<string, string> = {};
@@ -898,7 +1486,9 @@ export default function StorefrontHomePage() {
   data.categories.forEach((c) => (categoryNames[c.id] = c.name));
   data.products.forEach((p) => {
     categoryCounts[p.categoryId] = (categoryCounts[p.categoryId] ?? 0) + 1;
-    p.collectionIds.forEach((id) => (collectionCounts[id] = (collectionCounts[id] ?? 0) + 1));
+    p.collectionIds.forEach(
+      (id) => (collectionCounts[id] = (collectionCounts[id] ?? 0) + 1),
+    );
   });
 
   // ---- Showcase tabs
@@ -919,54 +1509,58 @@ export default function StorefrontHomePage() {
   data.collections.forEach((col) => {
     const list = data.products.filter((p) => p.collectionIds.includes(col.id));
     if (list.length) {
-      tabs.push({ key: col.id, label: col.name, href: `/collections/${col.slug}`, products: list });
+      tabs.push({
+        key: col.id,
+        label: col.name,
+        href: `/collections/${col.slug}`,
+        products: list,
+      });
     }
   });
-  const deals = data.products.filter((p) => disc(p) > 0).sort((a, b) => disc(b) - disc(a));
+  const deals = data.products
+    .filter((p) => disc(p) > 0)
+    .sort((a, b) => disc(b) - disc(a));
   if (deals.length) {
-    tabs.push({ key: "deals", label: "Top deals", href: "/products", products: deals });
+    tabs.push({
+      key: "deals",
+      label: "Top deals",
+      href: "/products",
+      products: deals,
+    });
   }
 
   return (
-    <div className="bg-white text-neutral-900">
-      <TopBar />
+    <div className="overflow-x-clip bg-white text-neutral-950">
+      <NoScrollbars />
 
-      {/* Hero: slider + two promo tiles, all above the fold on desktop */}
-      <section
-        className={`${WRAP} grid gap-3 py-3 ${
-          promos.length ? "lg:grid-cols-[minmax(0,1fr)_340px]" : ""
-        }`}
-      >
-        <HeroSlider slides={heroSlides} />
-        {promos.length > 0 && (
-          <div
-            className={`grid grid-cols-2 gap-3 lg:grid-cols-1 ${
-              promos.length > 1 ? "lg:grid-rows-2" : ""
-            }`}
-          >
-            {promos.map((b) => (
-              <PromoTile key={b.id} banner={b} />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Full-bleed hero: no outer padding, no rounded corners */}
+      <HeroSlider slides={heroSlides} />
 
       {sectionOn("category_grid") && (
-        <CategoryStrip categories={data.categories.slice(0, 6)} counts={categoryCounts} />
+        <CategoryStrip
+          categories={data.categories.slice(0, 6)}
+          counts={categoryCounts}
+        />
       )}
 
       {tabs.length > 0 ? (
         <Showcase tabs={tabs} categoryNames={categoryNames} />
       ) : (
-        <section className={`${WRAP} py-16 text-center`}>
+        <section className={`${WRAP} py-12 text-center`}>
           <p className="text-lg font-bold">New products are on the way</p>
-          <Link href="/collections" className="mt-2 inline-block text-sm font-bold text-brand">
+          <Link
+            href="/collections"
+            className="mt-2 inline-block text-sm font-bold text-neutral-950 underline underline-offset-2"
+          >
             Browse collections
           </Link>
         </section>
       )}
 
-      <CollectionCards collections={data.collections} counts={collectionCounts} />
+      <CollectionCards
+        collections={data.collections}
+        counts={collectionCounts}
+      />
       <FeaturesStrip />
     </div>
   );
