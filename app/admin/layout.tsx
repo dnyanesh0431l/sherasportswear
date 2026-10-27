@@ -1,5 +1,6 @@
 // app/admin/layout.tsx
 "use client";
+
 import { auth } from "@/lib/firebase/client";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import {
@@ -32,7 +33,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Toaster } from "sonner";
 
 /* ----------------------------- navigation data ---------------------------- */
@@ -102,7 +103,6 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col bg-[#0a0a0b] text-white">
-      <Toaster position="top-right" richColors closeButton />
       {/* brand */}
       <div
         className={`flex h-16 shrink-0 items-center border-b border-white/[0.08] transition-all duration-300 ${
@@ -126,7 +126,7 @@ function SidebarContent({
         )}
       </div>
 
-      {/* nav - hidden scrollbar for clean look */}
+      {/* nav */}
       <nav
         className={`flex-1 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
           collapsed ? "overflow-visible" : "overflow-y-auto"
@@ -252,7 +252,6 @@ function Header({
 }) {
   return (
     <header className="flex h-16 shrink-0 items-center gap-2 border-b border-black/[0.06] bg-white px-3 sm:px-4 lg:px-5">
-      {/* sidebar toggle — desktop */}
       <button
         onClick={onToggleCollapse}
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -266,7 +265,6 @@ function Header({
         )}
       </button>
 
-      {/* menu — mobile */}
       <button
         onClick={onOpenDrawer}
         title="Open menu"
@@ -276,7 +274,6 @@ function Header({
         <Menu className="h-[18px] w-[18px]" />
       </button>
 
-      {/* mobile brand */}
       <div className="flex items-center gap-2 sm:hidden">
         <span className="text-sm font-black tracking-tight text-neutral-900">
           SHERA
@@ -286,7 +283,6 @@ function Header({
         </span>
       </div>
 
-      {/* breadcrumb — sm+ */}
       <nav className="hidden items-center gap-2 pl-1 text-sm sm:flex">
         <span className="font-medium text-neutral-500">Admin</span>
         <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />
@@ -294,7 +290,6 @@ function Header({
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
-        {/* device preview segmented control */}
         <div className="hidden items-center gap-0.5 rounded-lg border border-black/[0.08] bg-neutral-100/70 p-0.5 sm:flex">
           {(
             [
@@ -319,7 +314,6 @@ function Header({
           ))}
         </div>
 
-        {/* fullscreen */}
         <button
           onClick={onToggleFullscreen}
           title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -333,7 +327,6 @@ function Header({
           )}
         </button>
 
-        {/* store link */}
         <Link
           href="/"
           className="hidden items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.08em] text-white transition-colors hover:bg-[#ff5a1f] sm:inline-flex"
@@ -347,13 +340,9 @@ function Header({
   );
 }
 
-/* ---------------------------------- layout -------------------------------- */
+/* ---------------------------------- content ------------------------------- */
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -368,7 +357,6 @@ export default function AdminLayout({
     "desktop",
   );
 
-  /* auth */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -393,12 +381,10 @@ export default function AdminLayout({
     return () => unsub();
   }, [router, pathname]);
 
-  /* close drawer on route change */
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
 
-  /* escape to close drawer */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setDrawerOpen(false);
@@ -407,7 +393,6 @@ export default function AdminLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  /* lock body scroll while drawer open */
   useEffect(() => {
     if (!drawerOpen) return;
     const prev = document.body.style.overflow;
@@ -417,7 +402,6 @@ export default function AdminLayout({
     };
   }, [drawerOpen]);
 
-  /* track fullscreen state */
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
@@ -426,11 +410,8 @@ export default function AdminLayout({
 
   const toggleFullscreen = async () => {
     try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
-      }
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
     } catch {
       /* ignored */
     }
@@ -445,7 +426,6 @@ export default function AdminLayout({
     NAV_ITEMS.find((item) => isActive(pathname, item.href))?.label ??
     "Dashboard";
 
-  /* -------------------------------- loading ------------------------------- */
   if (checking) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#0a0a0b]">
@@ -464,7 +444,6 @@ export default function AdminLayout({
     );
   }
 
-  /* ----------------------------- access denied ---------------------------- */
   if (!user || !isAdmin) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#0a0a0b] px-6">
@@ -482,21 +461,20 @@ export default function AdminLayout({
             href="/"
             className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#ff5a1f] px-4 py-3 text-xs font-black uppercase tracking-[0.08em] text-white transition hover:bg-[#e84912]"
           >
-            Back to store
-            <ArrowUpRight className="h-3.5 w-3.5" />
+            Back to store <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         </div>
       </div>
     );
   }
 
-  /* --------------------------------- main --------------------------------- */
   const previewMaxWidth =
     deviceView === "desktop" ? undefined : deviceView === "tablet" ? 820 : 430;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f6f6f7]">
-      {/* desktop sidebar */}
+      <Toaster position="top-right" richColors closeButton />
+
       <aside
         className="relative hidden shrink-0 transition-[width] duration-300 ease-out lg:block"
         style={{ width: collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W }}
@@ -509,23 +487,16 @@ export default function AdminLayout({
         />
       </aside>
 
-      {/* mobile drawer */}
       <div
-        className={`fixed inset-0 z-50 lg:hidden ${
-          drawerOpen ? "" : "pointer-events-none"
-        }`}
+        className={`fixed inset-0 z-50 lg:hidden ${drawerOpen ? "" : "pointer-events-none"}`}
         aria-hidden={!drawerOpen}
       >
         <div
           onClick={() => setDrawerOpen(false)}
-          className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-300 ${
-            drawerOpen ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-300 ${drawerOpen ? "opacity-100" : "opacity-0"}`}
         />
         <div
-          className={`absolute inset-y-0 left-0 w-[280px] shadow-2xl transition-transform duration-300 ease-out ${
-            drawerOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`absolute inset-y-0 left-0 w-[280px] shadow-2xl transition-transform duration-300 ease-out ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
           <button
             onClick={() => setDrawerOpen(false)}
@@ -544,7 +515,6 @@ export default function AdminLayout({
         </div>
       </div>
 
-      {/* main column */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header
           collapsed={collapsed}
@@ -581,5 +551,23 @@ export default function AdminLayout({
         </main>
       </div>
     </div>
+  );
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="grid min-h-screen place-items-center bg-[#0a0a0b]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#ff5a1f]" />
+        </div>
+      }
+    >
+      <AdminLayoutContent>{children}</AdminLayoutContent>
+    </Suspense>
   );
 }
