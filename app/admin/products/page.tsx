@@ -4,6 +4,8 @@ import { db } from "@/lib/firebase/client";
 import {
   collection,
   deleteDoc,
+  Firestore,
+  doc as firestoreDoc,
   getDocs,
   orderBy,
   query,
@@ -295,4 +297,15 @@ export default function ProductsListPage() {
       </div>
     </div>
   );
+}
+
+function doc(
+  db: Firestore,
+  arg1: string,
+  id: string,
+): import("@firebase/firestore").DocumentReference<
+  unknown,
+  import("@firebase/firestore").DocumentData
+> {
+  return firestoreDoc(db, arg1, id);
 }
