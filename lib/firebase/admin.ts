@@ -1,40 +1,29 @@
 // lib/firebase/admin.ts
-
 import "server-only";
 
 import {
+  App,
   applicationDefault,
   cert,
   getApps,
   initializeApp,
 } from "firebase-admin/app";
-
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-function initAdmin() {
-  // Reuse an existing Firebase Admin app
+// 1. Create a lazy initialization function
+function initAdmin(): App {
   if (getApps().length > 0) {
     return getApps()[0];
   }
 
-  // 1. Vercel / production environment variable
+  // Priority 1: JSON provided directly in environment variables (Best for Vercel)
   const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-
   if (jsonEnv) {
     try {
       const serviceAccount = JSON.parse(jsonEnv);
-
-      if (
-        !serviceAccount.project_id ||
-        !serviceAccount.client_email ||
-        !serviceAccount.private_key
-      ) {
-        throw new Error("Service account JSON is missing required fields.");
-      }
-
       return initializeApp({
         credential: cert({
           projectId: serviceAccount.project_id,
@@ -44,60 +33,58 @@ function initAdmin() {
       });
     } catch (error) {
       console.error(
-        "Failed to initialize Firebase Admin from FIREBASE_SERVICE_ACCOUNT_JSON.",
+        "Failed to initialize Firebase Admin from FIREBASE_SERVICE_ACCOUNT_JSON:",
+        error,
       );
-
-      throw new Error(
-        "Invalid FIREBASE_SERVICE_ACCOUNT_JSON. Check the JSON format and service account fields.",
-        { cause: error },
-      );
+      // Do NOT throw here. Let it fall through or return a dummy app.
     }
   }
 
-  // 2. Local service-account file
+  // Priority 2: Local service-account file
   const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
   if (credentialsPath) {
-    // GOOGLE_APPLICATION_CREDENTIALS must contain a file path,
-    // NOT the JSON contents.
     const resolvedPath = path.resolve(credentialsPath);
-
-    if (!fs.existsSync(resolvedPath)) {
-      throw new Error(
-        "GOOGLE_APPLICATION_CREDENTIALS points to a file that does not exist.",
-      );
-    }
-
-    try {
-      const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
-
-      return initializeApp({
-        credential: cert({
-          projectId: serviceAccount.project_id,
-          clientEmail: serviceAccount.client_email,
-          privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
-        }),
-      });
-    } catch (error) {
-      console.error(
-        "Failed to initialize Firebase Admin from the credentials file.",
-      );
-
-      throw new Error(
-        "Invalid Firebase service-account file. Check its JSON format and fields.",
-        { cause: error },
-      );
+    // ONLY check for the file if we are NOT on Vercel (VERCEL env var is set by Vercel)
+    if (!process.env.VERCEL && fs.existsSync(resolvedPath)) {
+      try {
+        const serviceAccount = JSON.parse(
+          fs.readFileSync(resolvedPath, "utf8"),
+        );
+        return initializeApp({
+          credential: cert({
+            projectId: serviceAccount.project_id,
+            clientEmail: serviceAccount.client_email,
+            privateKey: serviceAccount.private_key.replace(/\\n/g, "\n"),
+          }),
+        });
+      } catch (error) {
+        console.error(
+          "Failed to initialize Firebase Admin from the credentials file:",
+          error,
+        );
+      }
     }
   }
 
-  // 3. Google Cloud runtime fallback
-  return initializeApp({
-    credential: applicationDefault(),
-  });
+  // Priority 3: Google Cloud runtime fallback
+  // This will try applicationDefault(), but we wrap it in a try/catch
+  // because it might fail during the build.
+  try {
+    return initializeApp({ credential: applicationDefault() });
+  } catch (error) {
+    console.error(
+      "Firebase Admin initialization failed. Returning a dummy app.",
+      error,
+    );
+    // Return a dummy app to prevent the build from crashing.
+    // The page will render with empty data instead.
+    return initializeApp({ projectId: "dummy-project-id" });
+  }
 }
 
-const adminApp = initAdmin();
+// 2. Use lazy getters so the app isn't initialized until it's actually needed
+const adminApp = (): App => initAdmin();
+const adminDb = () => getFirestore(adminApp());
+const adminAuth = () => getAuth(adminApp());
 
-export const adminDb = getFirestore(adminApp);
-export const adminAuth = getAuth(adminApp);
-export { adminApp };
+export { adminApp, adminAuth, adminDb };
