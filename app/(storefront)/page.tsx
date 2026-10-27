@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { adminDb } from "../../lib/firebase/admin";
 export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
 export const metadata: Metadata = {
   title: "Shera Sports Wear — Built to Move",
   description:
