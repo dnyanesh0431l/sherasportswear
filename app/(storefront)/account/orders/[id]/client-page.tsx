@@ -1,8 +1,7 @@
 // app/(storefront)/account/orders/[id]/client-page.tsx
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase/client";
 import {
   collection,
   doc,
@@ -21,8 +20,8 @@ import {
   Package,
   Truck,
 } from "lucide-react";
-import { useParams } from "next/navigation";
-import { db } from "@/lib/firebase/client";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useCustomer } from "../../layout-client";
 
 type OrderItem = {
@@ -104,10 +103,8 @@ function Pill({ value }: { value: string | null }) {
   );
 }
 
-export default function MyOrderDetailPage() {
-  const params = useParams<{ id: string }>();
+export default function MyOrderDetailPage({ orderId }: { orderId: string }) {
   const user = useCustomer();
-  const orderId = params?.id;
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -124,7 +121,6 @@ export default function MyOrderDetailPage() {
           return;
         }
         const d = snap.data();
-        // Ownership check (defensive, in addition to rules)
         if (d.userId !== user.uid) {
           setNotFound(true);
           return;
@@ -145,13 +141,12 @@ export default function MyOrderDetailPage() {
           createdAt: toDate(d.createdAt),
         });
 
-        // Load shipments (non-fatal if rules don't permit)
         try {
           const shipSnap = await getDocs(
             query(
               collection(db, "orders", orderId, "shipments"),
-              orderBy("createdAt", "desc")
-            )
+              orderBy("createdAt", "desc"),
+            ),
           );
           setShipments(
             shipSnap.docs.map((sd) => {
@@ -165,7 +160,7 @@ export default function MyOrderDetailPage() {
                 shippedAt: toDate(s.shippedAt),
                 deliveredAt: toDate(s.deliveredAt),
               };
-            })
+            }),
           );
         } catch {
           /* non-fatal */
@@ -340,9 +335,7 @@ export default function MyOrderDetailPage() {
         <div className="bg-white rounded-xl border border-neutral-200 p-5">
           <div className="flex items-center gap-2 mb-3">
             <MapPin className="h-4 w-4 text-orange-500" />
-            <h3 className="font-semibold text-neutral-900">
-              Shipping address
-            </h3>
+            <h3 className="font-semibold text-neutral-900">Shipping address</h3>
           </div>
           {order.shippingAddress ? (
             <address className="not-italic text-sm text-neutral-700 leading-relaxed">
@@ -398,11 +391,7 @@ export default function MyOrderDetailPage() {
             <Row label="Shipping" value={formatINR(order.shippingPaise)} />
             <Row label="Tax" value={formatINR(order.taxPaise)} />
             <div className="border-t border-neutral-200 pt-2 mt-2">
-              <Row
-                label="Total"
-                value={formatINR(order.totalPaise)}
-                bold
-              />
+              <Row label="Total" value={formatINR(order.totalPaise)} bold />
             </div>
           </dl>
         </div>
