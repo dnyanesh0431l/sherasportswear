@@ -1,14 +1,20 @@
 // app/(storefront)/categories/[slug]/page.tsx
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { db } from "../../../../lib/firebase/client";
-import { ArrowLeft, Heart, Loader2, SlidersHorizontal, Tag } from "lucide-react";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
+import {
+  ArrowLeft,
+  Heart,
+  Loader2,
+  SlidersHorizontal,
+  Tag,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useWishlist } from "./../../../context/wishlist-context";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { db } from "../../../../lib/firebase/client";
+import { useWishlist } from "./../../../context/wishlist-context";
 
 // ---------------------------------------------------------------------------
 // Types & Helpers
@@ -43,7 +49,7 @@ function discountPercent(mrp: number, price: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Product Card Component
+// Product Card Component (Compact Version)
 // ---------------------------------------------------------------------------
 
 function ProductCard({ product }: { product: Product }) {
@@ -70,9 +76,10 @@ function ProductCard({ product }: { product: Product }) {
   };
 
   return (
-    <div className="group relative">
-      <Link href={`/products/${product.slug}`} className="block">
-        <div className="relative aspect-[5/6] overflow-hidden rounded-lg bg-neutral-100">
+    <div className="group relative flex flex-col">
+      <Link href={`/products/${product.slug}`} className="block flex-1">
+        {/* Reduced aspect ratio to 3/4 for a shorter card */}
+        <div className="relative aspect-[3/4] overflow-hidden rounded-md bg-[#f5f5f5]">
           {product.images[0] ? (
             <img
               src={product.images[0]}
@@ -82,47 +89,49 @@ function ProductCard({ product }: { product: Product }) {
             />
           ) : (
             <div className="grid h-full w-full place-items-center text-neutral-300">
-              <Tag className="h-10 w-10" />
+              <Tag className="h-6 w-6" />
             </div>
           )}
+
+          {/* Smaller Discount Badge */}
           {discount > 0 && (
-            <span className="absolute left-2.5 top-2.5 rounded bg-[#ff5a1f] px-2 py-1 text-[9px] font-bold uppercase leading-none text-white">
-              {discount}% off
+            <span className="absolute left-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-white">
+              {discount}% Off
             </span>
           )}
+
+          {/* Smaller Wishlist Button */}
+          <button
+            type="button"
+            onClick={toggleWishlist}
+            aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
+            className="absolute right-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full bg-white/80 transition-colors hover:bg-white"
+          >
+            <Heart
+              className={`h-3.5 w-3.5 transition-colors ${
+                isSaved ? "fill-red-500 text-red-500" : "text-neutral-500"
+              }`}
+            />
+          </button>
         </div>
-        <div className="mt-3">
-          <h3 className="line-clamp-1 text-xs font-medium text-neutral-900 sm:text-sm">
+
+        {/* Tighter Text Area */}
+        <div className="mt-1.5">
+          <h3 className="line-clamp-1 text-[11px] font-bold text-neutral-900 sm:text-xs group-hover:text-[#ff5a1f] transition-colors">
             {product.name}
           </h3>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm font-bold text-neutral-950 sm:text-base">
+          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
+            <span className="text-xs font-black text-neutral-950 sm:text-sm">
               {formatINR(product.basePricePaise)}
             </span>
             {product.mrpPaise > product.basePricePaise && (
-              <>
-                <span className="text-[11px] text-neutral-400 line-through">
-                  {formatINR(product.mrpPaise)}
-                </span>
-                <span className="text-[11px] font-semibold text-emerald-700">
-                  Save {formatINR(product.mrpPaise - product.basePricePaise)}
-                </span>
-              </>
+              <span className="text-[10px] font-medium text-neutral-400 line-through">
+                {formatINR(product.mrpPaise)}
+              </span>
             )}
           </div>
         </div>
       </Link>
-
-      <button
-        type="button"
-        onClick={toggleWishlist}
-        aria-label={isSaved ? "Remove from wishlist" : "Add to wishlist"}
-        className="absolute right-2.5 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-full text-neutral-800 transition-colors hover:text-red-500 bg-white/70 backdrop-blur-sm"
-      >
-        <Heart
-          className={`h-4 w-4 ${isSaved ? "fill-red-500 text-red-500" : ""}`}
-        />
-      </button>
     </div>
   );
 }
@@ -138,14 +147,18 @@ function CategoryDetail() {
   const [category, setCategory] = useState<Category | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<"newest" | "price-low" | "price-high">("newest");
+  const [sortBy, setSortBy] = useState<"newest" | "price-low" | "price-high">(
+    "newest",
+  );
 
   useEffect(() => {
     if (!slug) return;
     async function fetchData() {
       try {
-        // 1. Fetch the category by slug
-        const catQuery = query(collection(db, "categories"), where("slug", "==", slug));
+        const catQuery = query(
+          collection(db, "categories"),
+          where("slug", "==", slug),
+        );
         const catSnap = await getDocs(catQuery);
 
         if (catSnap.empty) {
@@ -163,22 +176,22 @@ function CategoryDetail() {
         };
         setCategory(categoryObj);
 
-        // 2. Fetch products for this category
         const prodQuery = query(
           collection(db, "products"),
           where("categoryId", "==", categoryObj.id),
           where("status", "==", "active"),
-          orderBy("createdAt", "desc")
+          orderBy("createdAt", "desc"),
         );
         const prodSnap = await getDocs(prodQuery);
-        
+
         const list: Product[] = prodSnap.docs.map((d) => {
           const p = d.data();
           return {
             id: d.id,
             name: p.name || "",
             slug: p.slug || d.id,
-            basePricePaise: typeof p.basePricePaise === "number" ? p.basePricePaise : 0,
+            basePricePaise:
+              typeof p.basePricePaise === "number" ? p.basePricePaise : 0,
             mrpPaise: typeof p.mrpPaise === "number" ? p.mrpPaise : 0,
             images: Array.isArray(p.images) ? p.images : [],
             categoryId: p.categoryId || "",
@@ -203,7 +216,7 @@ function CategoryDetail() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <Loader2 className="h-8 w-8 animate-spin text-[#ff5a1f]" />
       </div>
     );
@@ -211,10 +224,17 @@ function CategoryDetail() {
 
   if (!category) {
     return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center bg-white px-4 text-center">
-        <h1 className="text-2xl font-black italic uppercase">Category Not Found</h1>
-        <p className="mt-2 text-neutral-500">The category you are looking for does not exist.</p>
-        <Link href="/categories" className="mt-6 rounded-md bg-[#ff5a1f] px-6 py-3 text-sm font-semibold text-white hover:bg-[#e84912]">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-white px-4 text-center">
+        <h1 className="text-2xl font-black italic uppercase text-neutral-900">
+          Category Not Found
+        </h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          The category you are looking for does not exist.
+        </p>
+        <Link
+          href="/categories"
+          className="mt-6 rounded bg-neutral-950 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-[#ff5a1f] transition-colors"
+        >
           Back to Categories
         </Link>
       </div>
@@ -222,9 +242,9 @@ function CategoryDetail() {
   }
 
   return (
-    <div className="bg-white min-h-screen pb-20">
-      {/* Header Banner */}
-      <div className="relative bg-neutral-950 text-white py-16 sm:py-24 overflow-hidden">
+    <div className="min-h-screen bg-white pb-16">
+      {/* Compact Header Banner */}
+      <div className="relative bg-neutral-950 text-white py-10 sm:py-14 overflow-hidden">
         {category.image && (
           <img
             src={category.image}
@@ -233,31 +253,34 @@ function CategoryDetail() {
           />
         )}
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center z-10">
-          <Link href="/categories" className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white mb-6 transition-colors">
-            <ArrowLeft className="h-4 w-4" /> All Categories
+          <Link
+            href="/categories"
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-neutral-400 hover:text-white mb-3 uppercase tracking-wider transition-colors"
+          >
+            <ArrowLeft className="h-3 w-3" /> All Categories
           </Link>
-          <h1 className="font-display text-4xl font-black italic uppercase leading-none tracking-tight sm:text-5xl lg:text-6xl">
+          <h1 className="font-display text-3xl font-black italic uppercase leading-none tracking-tight sm:text-4xl lg:text-5xl">
             {category.name}
           </h1>
           {category.description && (
-            <p className="mt-4 text-sm text-neutral-400 max-w-xl mx-auto">
+            <p className="mt-2 text-xs sm:text-sm font-medium text-neutral-400 max-w-md mx-auto">
               {category.description}
             </p>
           )}
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="sticky top-0 z-30 border-b border-neutral-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center justify-between h-14">
-          <div className="flex items-center gap-2 text-sm text-neutral-500">
-            <SlidersHorizontal className="h-4 w-4" />
+      {/* Filter Bar - Sticky & Compact */}
+      <div className="sticky top-0 z-30 border-b border-neutral-100 bg-white/95 backdrop-blur-md">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center justify-between h-12">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
             <span>{products.length} Products</span>
           </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-transparent text-sm font-semibold outline-none cursor-pointer hover:text-[#ff5a1f]"
+            className="bg-transparent text-xs font-bold uppercase tracking-wider text-neutral-900 outline-none cursor-pointer hover:text-[#ff5a1f] transition-colors"
           >
             <option value="newest">Newest Arrivals</option>
             <option value="price-low">Price: Low to High</option>
@@ -266,15 +289,19 @@ function CategoryDetail() {
         </div>
       </div>
 
-      {/* Product Grid */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-8">
+      {/* Product Grid - Denser with more columns on desktop */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-6">
         {sortedProducts.length === 0 ? (
           <div className="text-center py-20">
-            <h3 className="text-lg font-bold">No products found in this category</h3>
-            <p className="text-neutral-500 mt-2">Check back soon for new drops.</p>
+            <h3 className="text-lg font-black uppercase text-neutral-900">
+              No products found
+            </h3>
+            <p className="text-sm text-neutral-500 mt-2">
+              Check back soon for new drops.
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-10 sm:gap-x-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 xl:grid-cols-7 gap-x-3 gap-y-6 sm:gap-x-4 sm:gap-y-8">
             {sortedProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
@@ -289,7 +316,7 @@ export default function CategoryPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-white">
+        <div className="flex min-h-[60vh] items-center justify-center bg-white">
           <Loader2 className="h-8 w-8 animate-spin text-[#ff5a1f]" />
         </div>
       }

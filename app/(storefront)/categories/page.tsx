@@ -1,7 +1,7 @@
 // app/(storefront)/categories/page.tsx
 "use client";
 
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { ArrowRight, Loader2, Tag } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -23,7 +23,7 @@ export default function CategoriesPage() {
     async function fetchCategories() {
       try {
         const snap = await getDocs(
-          query(collection(db, "categories"), orderBy("sortOrder", "asc"))
+          query(collection(db, "categories"), orderBy("sortOrder", "asc")),
         );
         const list: Category[] = snap.docs
           .filter((d) => d.data().status === "active")
@@ -49,35 +49,37 @@ export default function CategoriesPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[80vh] items-center justify-center bg-white">
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <Loader2 className="h-8 w-8 animate-spin text-[#ff5a1f]" />
       </div>
     );
   }
 
   return (
-    <div className="bg-white min-h-screen pb-20">
-      {/* Header Banner */}
-      <div className="bg-neutral-950 text-white py-16 sm:py-24">
+    <div className="min-h-screen bg-white pb-16">
+      {/* Compact Header Banner */}
+      <div className="bg-neutral-950 text-white py-10 sm:py-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="font-display text-4xl font-black italic uppercase leading-none tracking-tight sm:text-5xl lg:text-6xl">
+          <h1 className="font-display text-3xl font-black italic uppercase leading-none tracking-tight sm:text-4xl lg:text-5xl">
             Shop by Category
           </h1>
-          <p className="mt-4 text-sm text-neutral-400 max-w-xl mx-auto">
+          <p className="mt-2 text-xs sm:text-sm font-medium text-neutral-400 max-w-md mx-auto">
             Find exactly what you need to elevate your performance.
           </p>
         </div>
       </div>
 
-      {/* Categories Grid */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-12">
+      {/* Categories Grid - Tighter Spacing */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8">
         {categories.length === 0 ? (
           <div className="text-center py-20">
-            <h3 className="text-lg font-bold">No categories found</h3>
-            <p className="text-neutral-500 mt-2">Check back soon.</p>
+            <h3 className="text-lg font-black uppercase text-neutral-900">
+              No categories found
+            </h3>
+            <p className="text-sm text-neutral-500 mt-2">Check back soon.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
             {categories.map((category) => (
               <Link
                 key={category.id}
@@ -89,28 +91,28 @@ export default function CategoriesPage() {
                     src={category.image}
                     alt={category.name}
                     loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                 ) : (
                   <div className="grid h-full w-full place-items-center bg-neutral-200">
-                    <Tag className="h-10 w-10 text-neutral-400" />
+                    <Tag className="h-8 w-8 text-neutral-400" />
                   </div>
                 )}
-                
+
                 {/* Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-                
-                {/* Content */}
-                <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6">
-                  <h3 className="font-display text-xl sm:text-2xl font-black italic uppercase text-white leading-tight">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+
+                {/* Content - Reduced Padding */}
+                <div className="absolute inset-x-0 bottom-0 p-4">
+                  <h3 className="font-display text-lg sm:text-xl font-black italic uppercase text-white leading-tight">
                     {category.name}
                   </h3>
                   {category.description && (
-                    <p className="text-xs text-white/70 mt-1 line-clamp-2">
+                    <p className="text-[11px] text-white/70 mt-1 line-clamp-1">
                       {category.description}
                     </p>
                   )}
-                  <div className="mt-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#ff5a1f]">
+                  <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#ff5a1f]">
                     Shop Now <ArrowRight className="h-3 w-3" />
                   </div>
                 </div>

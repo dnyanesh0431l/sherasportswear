@@ -2,20 +2,66 @@
 "use client";
 
 import { db } from "@/lib/firebase/client";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
+import {
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import {
+  ArrowRight,
+  Heart,
+  Menu,
+  Package,
+  Search,
+  ShoppingCart,
+  Tag,
+  User,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCart } from "./../../context/cart-context";
 import { useWishlist } from "./../../context/wishlist-context";
 
+// ---------------------------------------------------------------------------
+// Types for Search
+// ---------------------------------------------------------------------------
 type NavCategory = {
   id: string;
   label: string;
   href: string;
 };
 
+type SearchProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  pricePaise: number;
+  image: string;
+};
+
+type SearchCollection = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type SearchData = {
+  products: SearchProduct[];
+  collections: SearchCollection[];
+  categories: NavCategory[];
+};
+
+const formatINR = (paise: number) =>
+  `₹${(paise / 100).toLocaleString("en-IN")}`;
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
 function Logo({ isDark = false }: { isDark?: boolean }) {
   return (
     <Link
@@ -72,25 +118,206 @@ function IconLink({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Search Dropdown Component
+// ---------------------------------------------------------------------------
+function SearchDropdown({
+  data,
+  searchQuery,
+  onClose,
+}: {
+  data: SearchData;
+  searchQuery: string;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const q = searchQuery.toLowerCase().trim();
+
+  const matchedCategories = useMemo(
+    () => data.categories.filter((c) => c.label.toLowerCase().includes(q)),
+    [data.categories, q],
+  );
+  const matchedCollections = useMemo(
+    () => data.collections.filter((c) => c.name.toLowerCase().includes(q)),
+    [data.collections, q],
+  );
+  const matchedProducts = useMemo(
+    () =>
+      data.products.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q),
+      ),
+    [data.products, q],
+  );
+
+  const hasResults =
+    matchedCategories.length > 0 ||
+    matchedCollections.length > 0 ||
+    matchedProducts.length > 0;
+
+  if (!q) return null;
+
+  return (
+    <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] rounded-xl bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-neutral-100 overflow-hidden z-50">
+      {!hasResults ? (
+        <div className="p-6 text-center text-sm text-neutral-500">
+          No results found for &quot;{searchQuery}&quot;
+        </div>
+      ) : (
+        <div className="max-h-[80vh] overflow-y-auto p-2">
+          {/* Categories */}
+          {matchedCategories.length > 0 && (
+            <div className="mb-2">
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Categories
+              </div>
+              <div className="flex flex-wrap gap-1.5 px-2 pb-2">
+                {matchedCategories.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={c.href}
+                    onClick={onClose}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-200 transition-colors"
+                  >
+                    <Tag className="h-3 w-3 text-neutral-500" />
+                    {c.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Collections */}
+          {matchedCollections.length > 0 && (
+            <div className="mb-2">
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Collections
+              </div>
+              <div className="flex flex-wrap gap-1.5 px-2 pb-2">
+                {matchedCollections.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/collections/${c.slug}`}
+                    onClick={onClose}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-200 transition-colors"
+                  >
+                    <Package className="h-3 w-3 text-neutral-500" />
+                    {c.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Products */}
+          {matchedProducts.length > 0 && (
+            <div>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400 flex items-center justify-between">
+                <span>Products</span>
+                <span>{matchedProducts.length} found</span>
+              </div>
+              <ul className="space-y-1">
+                {matchedProducts.slice(0, 5).map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      href={`/products/${p.slug}`}
+                      onClick={onClose}
+                      className="flex items-center gap-3 rounded-lg p-2 hover:bg-neutral-50 transition-colors group"
+                    >
+                      <div className="h-10 w-10 aspect-square shrink-0 rounded bg-neutral-100 overflow-hidden">
+                        {p.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.image}
+                            alt=""
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="grid h-full w-full place-items-center">
+                            <Package className="h-4 w-4 text-neutral-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-neutral-900 truncate group-hover:text-[#ff5a1f] transition-colors">
+                          {p.name}
+                        </div>
+                        <div className="text-[11px] text-neutral-500">
+                          {formatINR(p.pricePaise)}
+                        </div>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-neutral-300 group-hover:text-[#ff5a1f] transition-colors shrink-0" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {matchedProducts.length > 5 && (
+                <button
+                  onClick={() => {
+                    router.push(
+                      `/products?q=${encodeURIComponent(searchQuery)}`,
+                    );
+                    onClose();
+                  }}
+                  className="w-full text-center py-2 text-xs font-bold text-[#ff5a1f] hover:underline"
+                >
+                  View all {matchedProducts.length} results
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Header Content
+// ---------------------------------------------------------------------------
 function HeaderContent() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  const [categories, setCategories] = useState<NavCategory[]>([]);
+  const router = useRouter();
+  const [open, setOpen] = useState(false); // Mobile drawer state
   const [loadingCats, setLoadingCats] = useState(true);
+
+  // Search State
+  const [searchData, setSearchData] = useState<SearchData>({
+    products: [],
+    collections: [],
+    categories: [],
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const { cartCount } = useCart();
   const { wishlistCount } = useWishlist();
 
+  // Fetch all data for live search on mount
   useEffect(() => {
     (async () => {
       try {
-        const snap = await getDocs(
-          query(collection(db, "categories"), orderBy("sortOrder", "asc")),
-        );
-        const list: NavCategory[] = snap.docs
+        const [catSnap, colSnap, prodSnap] = await Promise.all([
+          getDocs(
+            query(collection(db, "categories"), orderBy("sortOrder", "asc")),
+          ),
+          getDocs(
+            query(collection(db, "collections"), orderBy("sortOrder", "asc")),
+          ),
+          getDocs(
+            query(
+              collection(db, "products"),
+              where("status", "==", "active"),
+              limit(100),
+            ),
+          ),
+        ]);
+
+        const categories = catSnap.docs
           .filter((d) => {
-            const status = d.data().status;
-            return status === "active" || status === undefined;
+            const s = d.data().status;
+            return s === "active" || s === undefined;
           })
           .map((d) => {
             const data = d.data();
@@ -101,13 +328,54 @@ function HeaderContent() {
               href: `/categories/${slug}`,
             };
           });
-        setCategories(list);
-      } catch {
-        /* silent — nav empty on failure */
+
+        const collections = colSnap.docs
+          .filter((d) => {
+            const s = d.data().status;
+            return s === "active" || s === undefined;
+          })
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              name: data.name || d.id,
+              slug: data.slug || d.id,
+            };
+          });
+
+        const products = prodSnap.docs.map((d) => {
+          const data = d.data();
+          const images = Array.isArray(data.images) ? data.images : [];
+          return {
+            id: d.id,
+            name: data.name || d.id,
+            slug: data.slug || d.id,
+            pricePaise: data.basePricePaise || 0,
+            image: images[0] || "",
+          };
+        });
+
+        setSearchData({ categories, collections, products });
+      } catch (err) {
+        console.error("Failed to load search data", err);
       } finally {
         setLoadingCats(false);
       }
     })();
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        searchRef.current &&
+        !searchRef.current.contains(event.target as Node)
+      ) {
+        setIsSearchFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => setOpen(false), [pathname]);
@@ -118,6 +386,14 @@ function HeaderContent() {
       document.body.style.overflow = "";
     };
   }, [open]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/products?q=${encodeURIComponent(searchQuery.trim())}`);
+      setIsSearchFocused(false);
+    }
+  };
 
   return (
     <>
@@ -135,14 +411,14 @@ function HeaderContent() {
 
           <Logo />
 
-          {/* Desktop Navigation — from Firestore categories */}
-          <nav aria-label="Main" className="hidden items-center gap-6 lg:flex">
+          {/* Desktop Navigation */}
+          <nav aria-label="Main" className="hidden items-center gap-5 lg:flex">
             {loadingCats ? (
               <span className="text-[12px] font-medium text-neutral-400">
                 Loading…
               </span>
             ) : (
-              categories.map((c) => {
+              searchData.categories.map((c) => {
                 const active =
                   pathname === c.href || pathname.startsWith(c.href + "/");
                 return (
@@ -162,23 +438,47 @@ function HeaderContent() {
             )}
           </nav>
 
-          {/* Desktop Search */}
-          <form
-            action="/products"
-            role="search"
-            className="hidden flex-1 lg:block"
-          >
-            <div className="relative max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
-              <input
-                type="search"
-                name="q"
-                aria-label="Search products"
-                placeholder="Search for products..."
-                className="h-9 w-full rounded-full bg-neutral-100 pl-9 pr-4 text-[13px] font-medium text-neutral-900 outline-none placeholder:text-neutral-500 focus:ring-2 focus:ring-[#ff5a1f]/30"
+          {/* Live Search Bar (Desktop) */}
+          <div className="hidden flex-1 lg:block relative" ref={searchRef}>
+            <form onSubmit={handleSearchSubmit} role="search">
+              <div className="relative max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  aria-label="Search products"
+                  placeholder="Search for products, collections..."
+                  className="h-9 w-full rounded-full bg-neutral-100 pl-9 pr-4 text-[13px] font-medium text-neutral-900 outline-none placeholder:text-neutral-500 focus:bg-white focus:ring-1 focus:ring-neutral-950 transition-all"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setIsSearchFocused(false);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Dropdown */}
+            {isSearchFocused && searchQuery.trim().length > 0 && (
+              <SearchDropdown
+                data={searchData}
+                searchQuery={searchQuery}
+                onClose={() => {
+                  setIsSearchFocused(false);
+                  setSearchQuery("");
+                }}
               />
-            </div>
-          </form>
+            )}
+          </div>
 
           {/* Right Icons */}
           <div className="ml-auto flex items-center gap-1 lg:ml-0 lg:gap-2">
@@ -244,7 +544,7 @@ function HeaderContent() {
             {loadingCats ? (
               <div className="px-3 py-3 text-sm text-white/60">Loading…</div>
             ) : (
-              categories.map((c) => {
+              searchData.categories.map((c) => {
                 const active =
                   pathname === c.href || pathname.startsWith(c.href + "/");
                 return (

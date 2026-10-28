@@ -98,8 +98,6 @@ function LoginForm() {
     }
   }, []);
 
-  // Enter in the email field moves to password. Enter in the password field
-  // submits the form natively.
   const handleEmailKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -148,11 +146,11 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-white lg:flex-row">
+      
       {/* ================================================================= */}
-      {/* LEFT PANEL: Image & Branding (Desktop: 55% width / Mobile: Top 45vh) */}
+      {/* LEFT PANEL: Image & Branding (Desktop: 55% width / Mobile: Top 35vh) */}
       {/* ================================================================= */}
-      <div className="relative h-[45vh] w-full shrink-0 overflow-hidden bg-[var(--brand-black)] lg:h-auto lg:w-[55%]">
-        {/* Background Image (decorative) */}
+      <div className="relative h-[35vh] w-full shrink-0 overflow-hidden bg-neutral-950 lg:h-auto lg:w-[55%]">
         <Image
           src="https://i.pinimg.com/736x/ff/44/e3/ff44e37249879fb73472f51aa20f7853.jpg"
           alt=""
@@ -162,69 +160,50 @@ function LoginForm() {
           className="object-cover object-top opacity-80"
         />
 
-        {/* Dark Gradient Overlays for Text Readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--brand-black)] via-[var(--brand-black)]/40 to-transparent lg:bg-gradient-to-r lg:from-[var(--brand-black)]/90 lg:via-[var(--brand-black)]/40 lg:to-transparent" />
-        <div className="absolute inset-0 bg-[var(--brand-orange)]/10 mix-blend-overlay" />
+        {/* Dark Gradient Overlays */}
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent lg:bg-gradient-to-r lg:from-neutral-950/90 lg:via-neutral-950/40 lg:to-transparent" />
+        <div className="absolute inset-0 bg-[#ff5a1f]/10 mix-blend-overlay" />
 
-        {/* Content Container */}
-        <div className="relative z-10 flex h-full flex-col justify-between p-8 lg:p-16 xl:p-20">
-          {/* Logo */}
+        <div className="relative z-10 flex h-full flex-col justify-between p-6 lg:p-12 xl:p-16">
           <Link href="/" className="inline-flex w-fit flex-col items-start">
-            <span className="font-heading text-3xl font-black uppercase leading-none tracking-tighter text-white">
-              SHERA<span className="text-[var(--brand-orange)]">.</span>
+            <span className="font-display text-3xl font-black uppercase leading-none tracking-tighter text-white">
+              SHERA<span className="text-[#ff5a1f]">.</span>
             </span>
             <span className="mt-1 text-[10px] font-bold uppercase tracking-[0.3em] text-white/70">
               Sports Wear
             </span>
           </Link>
 
-          {/* Hero Text */}
-          <div className="mb-10 mt-auto hidden sm:block lg:mb-16">
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[var(--brand-orange)]">
+          <div className="mb-8 mt-auto hidden sm:block lg:mb-12">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-[#ff5a1f]">
               Built for
             </p>
-            <h1 className="font-heading text-5xl font-black uppercase leading-[0.9] tracking-tighter text-white lg:text-6xl xl:text-7xl">
+            <h1 className="font-display text-4xl font-black uppercase leading-[0.9] tracking-tighter text-white lg:text-5xl xl:text-6xl">
               Discipline <br />
-              <span className="text-[var(--brand-orange)]">Everyday</span>
+              <span className="text-[#ff5a1f]">Everyday</span>
             </h1>
-            <p className="mt-4 max-w-sm text-sm font-medium leading-relaxed text-white/70">
+            <p className="mt-3 max-w-sm text-sm font-medium leading-relaxed text-white/70">
               Premium sports wear for a stronger, healthier and more confident
               you.
             </p>
           </div>
 
-          {/* Features (Desktop only) */}
-          <div className="hidden items-center gap-8 border-t border-white/20 pt-6 lg:flex">
-            <div className="flex items-center gap-3">
-              <Truck
-                className="h-5 w-5 text-[var(--brand-orange)]"
-                aria-hidden="true"
-              />
-              <div className="text-xs font-bold leading-tight text-white">
-                Fast
-                <br />
-                Delivery
+          <div className="hidden items-center gap-6 border-t border-white/20 pt-4 lg:flex">
+            <div className="flex items-center gap-2">
+              <Truck className="h-4 w-4 text-[#ff5a1f]" />
+              <div className="text-[11px] font-bold leading-tight text-white">
+                Fast Delivery
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <ShieldCheck
-                className="h-5 w-5 text-[var(--brand-orange)]"
-                aria-hidden="true"
-              />
-              <div className="text-xs font-bold leading-tight text-white">
-                Premium
-                <br />
-                Quality
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-[#ff5a1f]" />
+              <div className="text-[11px] font-bold leading-tight text-white">
+                Premium Quality
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Headphones
-                className="h-5 w-5 text-[var(--brand-orange)]"
-                aria-hidden="true"
-              />
-              <div className="text-xs font-bold leading-tight text-white">
-                Dedicated
-                <br />
+            <div className="flex items-center gap-2">
+              <Headphones className="h-4 w-4 text-[#ff5a1f]" />
+              <div className="text-[11px] font-bold leading-tight text-white">
                 Support
               </div>
             </div>
@@ -233,17 +212,18 @@ function LoginForm() {
       </div>
 
       {/* ================================================================= */}
-      {/* RIGHT PANEL: Login Form (Desktop: 45% width / Mobile: Bottom Card) */}
+      {/* RIGHT PANEL: Login Form */}
       {/* ================================================================= */}
-      <div className="relative z-20 -mt-6 flex flex-1 flex-col justify-center rounded-t-3xl bg-white px-6 py-10 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] sm:px-12 lg:mt-0 lg:rounded-none lg:px-16 lg:shadow-none xl:px-24">
+      <div className="relative z-20 -mt-4 flex flex-1 flex-col justify-center rounded-t-2xl bg-white px-6 py-8 sm:px-10 lg:mt-0 lg:rounded-none lg:px-16 lg:py-12 xl:px-24">
         <div className="mx-auto w-full max-w-[400px]">
-          {/* Top Nav (Desktop only; mobile has the footer link) */}
-          <div className="mb-16 hidden items-center justify-end lg:flex">
-            <p className="text-sm font-medium text-[var(--muted)]">
+          
+          {/* Top Nav */}
+          <div className="mb-8 hidden items-center justify-end lg:flex">
+            <p className="text-xs font-medium text-neutral-500">
               New here?{" "}
               <Link
                 href="/register"
-                className="font-bold text-[var(--brand-orange)] transition-colors hover:text-[var(--brand-orange-hover)]"
+                className="font-bold text-[#ff5a1f] transition-colors hover:text-[#e84912]"
               >
                 Create an account
               </Link>
@@ -251,19 +231,19 @@ function LoginForm() {
           </div>
 
           {/* Header */}
-          <div className="mb-8">
-            <h2 className="font-heading text-3xl font-black tracking-tight text-[var(--brand-black)] sm:text-4xl">
+          <div className="mb-6">
+            <h2 className="font-display text-2xl font-black uppercase tracking-tight text-neutral-950 sm:text-3xl">
               Welcome Back
             </h2>
-            <p className="mt-2 text-sm font-medium text-[var(--muted)]">
+            <p className="mt-1.5 text-xs font-medium text-neutral-500">
               Login to your Shera Sports Wear account
             </p>
           </div>
 
-          {/* IP Warning (Subtle) */}
+          {/* IP Warning */}
           {showIpWarning && (
-            <div className="mb-6 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-[11px] font-medium text-amber-700">
-              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[10px] font-medium text-amber-700">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span>
                 Browsers block password saving on raw IPs. Use{" "}
                 <code className="font-bold">localhost</code> for autofill.
@@ -272,13 +252,11 @@ function LoginForm() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {/* Email */}
-            <div className="auth-field">
-              <Mail
-                className="h-5 w-5 shrink-0 text-[var(--muted)]"
-                aria-hidden="true"
-              />
+          <form onSubmit={handleSubmit} className="space-y-3" noValidate>
+            
+            {/* Email Input - Flat & Borderless */}
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
               <input
                 type="email"
                 name="email"
@@ -290,15 +268,13 @@ function LoginForm() {
                 onKeyDown={handleEmailKeyDown}
                 disabled={busy}
                 placeholder="Email address"
+                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-4 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200"
               />
             </div>
 
-            {/* Password */}
-            <div className="auth-field">
-              <Lock
-                className="h-5 w-5 shrink-0 text-[var(--muted)]"
-                aria-hidden="true"
-              />
+            {/* Password Input - Flat & Borderless */}
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
               <input
                 ref={passwordRef}
                 type={showPassword ? "text" : "password"}
@@ -310,38 +286,39 @@ function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={busy}
                 placeholder="Password"
+                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-12 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
-                className="rounded text-[var(--muted)] transition-colors hover:text-[var(--brand-black)]"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-2 text-neutral-500 transition-colors hover:text-neutral-950"
               >
                 {showPassword ? (
-                  <EyeOff className="h-5 w-5" aria-hidden="true" />
+                  <EyeOff className="h-4 w-4" />
                 ) : (
-                  <Eye className="h-5 w-5" aria-hidden="true" />
+                  <Eye className="h-4 w-4" />
                 )}
               </button>
             </div>
 
             {/* Remember & Forgot */}
-            <div className="flex items-center justify-between pb-2 pt-1">
+            <div className="flex items-center justify-between pb-1 pt-1">
               <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={remember}
                   onChange={(e) => setRemember(e.target.checked)}
-                  className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-[var(--brand-orange)]"
+                  className="h-4 w-4 cursor-pointer rounded border-neutral-300 accent-[#ff5a1f]"
                 />
-                <span className="text-xs font-semibold text-[var(--brand-black)]">
+                <span className="text-xs font-bold text-neutral-700">
                   Remember me
                 </span>
               </label>
               <Link
                 href="/forgot-password"
-                className="text-xs font-bold text-[var(--brand-orange)] transition-colors hover:text-[var(--brand-orange-hover)]"
+                className="text-xs font-bold text-[#ff5a1f] transition-colors hover:text-[#e84912]"
               >
                 Forgot password?
               </Link>
@@ -351,110 +328,72 @@ function LoginForm() {
             {error && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-xs font-medium text-red-600"
+                className="flex items-start gap-2 rounded bg-red-50 px-3 py-2 text-xs font-medium text-red-600"
               >
-                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
 
-            {/* Submit */}
+            {/* Submit Button - Solid Black / Brand Orange Hover */}
             <button
               type="submit"
               disabled={busy || !email || !password}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--brand-orange)] px-4 py-4 text-sm font-bold text-white transition-all hover:bg-[var(--brand-orange-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="group mt-2 flex w-full items-center justify-center gap-2 rounded bg-neutral-950 px-4 py-3.5 text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#ff5a1f] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <Loader2
-                    className="h-5 w-5 animate-spin"
-                    aria-hidden="true"
-                  />
-                  <span className="sr-only">Logging in</span>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Logging in...</span>
                 </>
               ) : (
                 <>
                   Login
-                  <ArrowRight
-                    className="h-4 w-4 transition-transform group-hover:translate-x-1"
-                    aria-hidden="true"
-                  />
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </>
               )}
             </button>
           </form>
 
           {/* Divider */}
-          <div className="relative my-7">
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-[var(--border)]" />
+              <div className="w-full border-t border-neutral-200" />
             </div>
             <div className="relative flex justify-center text-[10px] font-bold uppercase tracking-wider">
-              <span className="bg-white px-3 text-[var(--muted)]">Or</span>
+              <span className="bg-white px-3 text-neutral-400">Or continue with</span>
             </div>
           </div>
 
-          {/* Social Login */}
-          <div className="space-y-3">
+          {/* Social Login - Flat, Borderless */}
+          <div className="space-y-2">
             <button
               type="button"
               onClick={() => handleSocial("google")}
               disabled={busy}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border border-[var(--border)] bg-white px-4 py-3.5 text-sm font-semibold text-[var(--brand-black)] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-3 rounded bg-neutral-100 px-4 py-3 text-sm font-bold text-neutral-900 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {socialLoading === "google" ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    fill="#4285F4"
-                  />
-                  <path
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    fill="#34A853"
-                  />
-                  <path
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    fill="#FBBC05"
-                  />
-                  <path
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    fill="#EA4335"
-                  />
+                <svg className="h-4 w-4" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                 </svg>
               )}
               Continue with Google
             </button>
-            <button
-              type="button"
-              onClick={() => handleSocial("apple")}
-              disabled={busy}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border border-[var(--border)] bg-white px-4 py-3.5 text-sm font-semibold text-[var(--brand-black)] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {socialLoading === "apple" ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              ) : (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M16.365 21.44c-.96.67-1.98.62-2.936.07-1.05-.6-2.037-.6-3.097 0-.94.55-1.96.6-2.92.07-2.22-1.22-3.897-3.243-4.717-5.756-.87-2.64-.26-5.528 1.613-7.318 1.817-1.74 4.436-1.885 6.08-.406.686.617 1.294.617 1.98 0 1.613-1.457 4.21-1.34 6.055.37 1.163.108 2.36.642 3.247 1.55-2.428 1.34-2.023 4.84.59 5.96-.57 1.78-1.45 3.37-2.61 4.59l-.003.003c-.567.6-1.16 1.18-1.886 1.848zM12.057 7.352c1.08-1.298.893-3.316-.303-4.495-1.227-1.208-3.253-1.38-4.41-.258-.993 1.13-.9 3.204.288 4.4 1.206 1.214 3.31 1.38 4.425.353z" />
-                </svg>
-              )}
-              Continue with Apple
-            </button>
           </div>
 
           {/* Mobile Footer Nav */}
-          <div className="mt-8 text-center lg:hidden">
-            <p className="text-sm font-medium text-[var(--muted)]">
+          <div className="mt-6 text-center lg:hidden">
+            <p className="text-xs font-medium text-neutral-500">
               New here?{" "}
               <Link
                 href="/register"
-                className="font-bold text-[var(--brand-orange)]"
+                className="font-bold text-[#ff5a1f]"
               >
                 Create an account
               </Link>
@@ -472,7 +411,7 @@ export default function LoginPage() {
       fallback={
         <div className="grid min-h-screen place-items-center bg-white">
           <Loader2
-            className="h-8 w-8 animate-spin text-[var(--brand-orange)]"
+            className="h-8 w-8 animate-spin text-[#ff5a1f]"
             aria-label="Loading"
           />
         </div>
