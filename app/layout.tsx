@@ -49,7 +49,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${anton.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${anton.variable}`}
+      data-scroll-behavior="smooth"
+    >
       <body className="font-sans antialiased bg-white text-neutral-900">
         {children}
         <Toaster position="top-center" richColors closeButton />
