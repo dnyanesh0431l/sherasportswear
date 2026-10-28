@@ -3,6 +3,11 @@ import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import MyOrderDetailPage from "./client-page";
 
+// This route is user-specific and reads dynamic params.
+// Opt it out of instant-navigation validation so the build does not
+// require a static shell for [id].
+export const instant = false;
+
 function OrderDetailFallback() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">
