@@ -1,6 +1,8 @@
 // app/(storefront)/components/storefront-header.tsx
 "use client";
 
+import { db } from "@/lib/firebase/client";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { Heart, Menu, Search, ShoppingCart, User, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,13 +10,11 @@ import { Suspense, useEffect, useState } from "react";
 import { useCart } from "./../../context/cart-context";
 import { useWishlist } from "./../../context/wishlist-context";
 
-const NAV = [
-  { label: "Men", href: "/categories/men" },
-  { label: "Women", href: "/categories/women" },
-  { label: "Collections", href: "/collections" },
-  { label: "New Arrivals", href: "/collections/new-arrivals" },
-  { label: "Offers", href: "/offers" },
-];
+type NavCategory = {
+  id: string;
+  label: string;
+  href: string;
+};
 
 function Logo({ isDark = false }: { isDark?: boolean }) {
   return (
@@ -75,9 +75,40 @@ function IconLink({
 function HeaderContent() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [categories, setCategories] = useState<NavCategory[]>([]);
+  const [loadingCats, setLoadingCats] = useState(true);
 
   const { cartCount } = useCart();
   const { wishlistCount } = useWishlist();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "categories"), orderBy("sortOrder", "asc")),
+        );
+        const list: NavCategory[] = snap.docs
+          .filter((d) => {
+            const status = d.data().status;
+            return status === "active" || status === undefined;
+          })
+          .map((d) => {
+            const data = d.data();
+            const slug = data.slug || d.id;
+            return {
+              id: d.id,
+              label: data.name || d.id,
+              href: `/categories/${slug}`,
+            };
+          });
+        setCategories(list);
+      } catch {
+        /* silent — nav empty on failure */
+      } finally {
+        setLoadingCats(false);
+      }
+    })();
+  }, []);
 
   useEffect(() => setOpen(false), [pathname]);
 
@@ -90,7 +121,6 @@ function HeaderContent() {
 
   return (
     <>
-      {/* Minimized Header Height & Padding */}
       <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur-md">
         <div className="mx-auto flex h-12 max-w-7xl items-center gap-3 px-3 sm:px-4 lg:h-14 lg:gap-6 lg:px-6">
           {/* Mobile Menu Button */}
@@ -105,24 +135,31 @@ function HeaderContent() {
 
           <Logo />
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation — from Firestore categories */}
           <nav aria-label="Main" className="hidden items-center gap-6 lg:flex">
-            {NAV.map((l) => {
-              const active = pathname === l.href;
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={`text-[12px] font-bold uppercase tracking-wide transition-colors ${
-                    active
-                      ? "text-[#ff5a1f]"
-                      : "text-neutral-700 hover:text-[#ff5a1f]"
-                  }`}
-                >
-                  {l.label}
-                </Link>
-              );
-            })}
+            {loadingCats ? (
+              <span className="text-[12px] font-medium text-neutral-400">
+                Loading…
+              </span>
+            ) : (
+              categories.map((c) => {
+                const active =
+                  pathname === c.href || pathname.startsWith(c.href + "/");
+                return (
+                  <Link
+                    key={c.id}
+                    href={c.href}
+                    className={`text-[12px] font-bold uppercase tracking-wide transition-colors ${
+                      active
+                        ? "text-[#ff5a1f]"
+                        : "text-neutral-700 hover:text-[#ff5a1f]"
+                    }`}
+                  >
+                    {c.label}
+                  </Link>
+                );
+              })
+            )}
           </nav>
 
           {/* Desktop Search */}
@@ -182,7 +219,6 @@ function HeaderContent() {
           className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         />
 
-        {/* Drawer Panel */}
         <aside
           className={`absolute inset-y-0 left-0 w-[280px] max-w-[85%] p-6 shadow-2xl transition-transform duration-300 ease-out flex flex-col ${
             open ? "translate-x-0" : "-translate-x-full"
@@ -205,28 +241,31 @@ function HeaderContent() {
             aria-label="Mobile"
             className="flex-1 mt-4 space-y-1 overflow-y-auto"
           >
-            {NAV.map((l) => {
-              const active = pathname === l.href;
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  // Inline style forces white text to fix any override issues
-                  style={{ color: active ? "#ff5a1f" : "#ffffff" }}
-                  className={`flex items-center justify-between rounded-lg px-3 py-3.5 text-sm font-bold uppercase tracking-wider transition-colors ${
-                    active ? "bg-[#ff5a1f]/10" : "hover:bg-white/10"
-                  }`}
-                >
-                  {l.label}
-                  {active && (
-                    <div className="h-2 w-2 rounded-full bg-[#ff5a1f]" />
-                  )}
-                </Link>
-              );
-            })}
+            {loadingCats ? (
+              <div className="px-3 py-3 text-sm text-white/60">Loading…</div>
+            ) : (
+              categories.map((c) => {
+                const active =
+                  pathname === c.href || pathname.startsWith(c.href + "/");
+                return (
+                  <Link
+                    key={c.id}
+                    href={c.href}
+                    style={{ color: active ? "#ff5a1f" : "#ffffff" }}
+                    className={`flex items-center justify-between rounded-lg px-3 py-3.5 text-sm font-bold uppercase tracking-wider transition-colors ${
+                      active ? "bg-[#ff5a1f]/10" : "hover:bg-white/10"
+                    }`}
+                  >
+                    {c.label}
+                    {active && (
+                      <div className="h-2 w-2 rounded-full bg-[#ff5a1f]" />
+                    )}
+                  </Link>
+                );
+              })
+            )}
           </nav>
 
-          {/* Mobile Bottom Actions */}
           <div className="mt-auto border-t border-white/10 pt-4 space-y-2">
             <Link
               href="/account"
