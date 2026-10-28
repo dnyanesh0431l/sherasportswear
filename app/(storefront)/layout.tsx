@@ -1,130 +1,217 @@
-// app/(storefront)/layout.tsx
-import { Poppins } from "next/font/google";
+// app/(storefront)/_components/header.tsx
+"use client";
+
+import { db } from "@/lib/firebase/client";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import { Menu, Search, ShoppingBag, User, X } from "lucide-react";
 import Link from "next/link";
-import { StorefrontHeader } from "./_components/header";
-import { StorefrontProviders } from "./../providers";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  style: ["normal", "italic"],
-  variable: "--font-poppins",
-  display: "swap",
-});
+type Category = {
+  id: string;
+  name: string;
+  slug: string;
+};
 
-const ANNOUNCEMENTS = [
-  "Free shipping on orders above ₹999",
-  "Easy returns",
-  "Premium quality",
-];
+export function StorefrontHeader() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [query_, setQuery] = useState("");
+  const [categories, setCategories] = useState<Category[]>([]);
 
-const FOOTER_COLUMNS = [
-  {
-    title: "Shop",
-    links: [
-      ["All Products", "/products"],
-      ["Men", "/categories/men"],
-      ["Women", "/categories/women"],
-      ["Accessories", "/categories/accessories"],
-      ["Footwear", "/categories/footwear"],
-    ],
-  },
-  {
-    title: "Support",
-    links: [
-      ["Track Order", "/orders"],
-      ["My Account", "/account"],
-      ["Contact Us", "/contact"],
-      ["Shipping", "/shipping"],
-      ["Returns", "/returns"],
-    ],
-  },
-  {
-    title: "Company",
-    links: [
-      ["About", "/about"],
-      ["Privacy", "/privacy"],
-      ["Terms", "/terms"],
-    ],
-  },
-];
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "categories"), orderBy("sortOrder", "asc")),
+        );
+        setCategories(
+          snap.docs
+            .filter((d) => {
+              const s = d.data().status;
+              return s === "active" || s === undefined;
+            })
+            .map((d) => {
+              const data = d.data();
+              return {
+                id: d.id,
+                name: data.name || d.id,
+                slug: data.slug || d.id,
+              };
+            }),
+        );
+      } catch {
+        /* silent — no categories is not an error */
+      }
+    })();
+  }, []);
 
-export default function StorefrontLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = query_.trim();
+    router.push(q ? `/products?q=${encodeURIComponent(q)}` : "/products");
+  };
+
   return (
-    <StorefrontProviders>
-      <div
-        className={`${poppins.variable} flex min-h-screen flex-col bg-white font-display text-neutral-900`}
-      >
-        {/* Announcement bar */}
-        <div className="bg-brand text-white">
-          <p className="mx-auto flex max-w-7xl items-center justify-center gap-4 bg-[#ff5a1f] px-4 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider sm:text-[11px]">
-            {ANNOUNCEMENTS.map((text, i) => (
-              <span
-                key={text}
-                className={i > 0 ? "hidden items-center gap-4 sm:flex" : ""}
-              >
-                {i > 0 && (
-                  <span aria-hidden="true" className="h-3 w-px bg-white/60" />
-                )}
-                {text}
+    <header className="sticky top-0 z-40 bg-white border-b border-neutral-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-16">
+          {/* Left: mobile menu + logo */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden p-2 -ml-2 text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <Link href="/" className="flex flex-col leading-none">
+              <span className="font-display text-lg sm:text-xl tracking-wider text-neutral-900">
+                SHERA
               </span>
-            ))}
-          </p>
-        </div>
-
-        <StorefrontHeader />
-
-        <main className="flex-1 pb-20 md:pb-0">{children}</main>
-
-        <footer className="mt-8 bg-neutral-950 pb-20 text-neutral-300 md:mt-10 md:pb-0">
-          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-            <div className="grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
-              <div className="col-span-2 md:col-span-1">
-                <div className="font-display text-xl font-black italic tracking-tighter text-white">
-                  SHER<span className="text-brand">A</span>
-                </div>
-                <div className="mt-0.5 text-[9px] font-semibold tracking-[0.3em] text-brand">
-                  SPORTS WEAR
-                </div>
-                <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-400">
-                  Premium performance sportswear engineered for those who move.
-                </p>
-              </div>
-
-              {FOOTER_COLUMNS.map((col) => (
-                <div key={col.title}>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
-                    {col.title}
-                  </h4>
-                  <ul className="mt-3 space-y-1.5 text-[13px]">
-                    {col.links.map(([label, href]) => (
-                      <li key={href}>
-                        <Link
-                          href={href}
-                          className="transition-colors hover:text-brand"
-                        >
-                          {label}
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-neutral-800 pt-4 text-[11px] text-neutral-500 sm:flex-row">
-              <p>© 2026 Shera Sports Wear. All rights reserved.</p>
-              <p className="text-[9px] uppercase tracking-widest">
-                Built to move.
-              </p>
-            </div>
+              <span className="text-[8px] sm:text-[9px] tracking-[0.3em] text-orange-500 font-semibold">
+                SPORTS WEAR
+              </span>
+            </Link>
           </div>
-        </footer>
+
+          {/* Center: desktop category nav */}
+          <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
+            {categories.length === 0 ? (
+              <span className="text-sm text-neutral-400">Loading…</span>
+            ) : (
+              categories.map((c) => {
+                const href = `/categories/${c.slug}`;
+                const active =
+                  pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link
+                    key={c.id}
+                    href={href}
+                    className={`text-sm font-medium tracking-wide transition-colors ${
+                      active
+                        ? "text-orange-600"
+                        : "text-neutral-700 hover:text-orange-600"
+                    }`}
+                  >
+                    {c.name}
+                  </Link>
+                );
+              })
+            )}
+          </nav>
+
+          {/* Right: search + account + cart */}
+          <div className="flex items-center gap-1">
+            {/* Desktop search */}
+            <form
+              onSubmit={handleSearch}
+              className="hidden md:flex items-center gap-1 mr-2 rounded-md border border-neutral-300 px-2.5 py-1.5 bg-neutral-50 focus-within:border-orange-500 focus-within:bg-white transition-colors"
+            >
+              <Search className="h-4 w-4 text-neutral-400" />
+              <input
+                value={query_}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search products…"
+                className="w-36 lg:w-48 bg-transparent text-sm outline-none placeholder:text-neutral-400"
+              />
+            </form>
+
+            <Link
+              href="/search"
+              className="md:hidden p-2 text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </Link>
+            <Link
+              href="/account"
+              className="p-2 text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
+              aria-label="Account"
+            >
+              <User className="h-5 w-5" />
+            </Link>
+            <Link
+              href="/cart"
+              className="relative p-2 text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
+              aria-label="Cart"
+            >
+              <ShoppingBag className="h-5 w-5" />
+            </Link>
+          </div>
+        </div>
       </div>
-    </StorefrontProviders>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="fixed inset-y-0 left-0 w-72 bg-white z-50 lg:hidden shadow-xl flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-neutral-200">
+              <span className="font-display text-lg tracking-wider">SHERA</span>
+              <button
+                onClick={() => setMobileOpen(false)}
+                className="p-2 hover:bg-neutral-100 rounded-md transition-colors"
+                aria-label="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="flex-1 p-3 overflow-y-auto">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 font-semibold px-3 py-2">
+                Shop by category
+              </div>
+              {categories.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-neutral-400">
+                  Loading…
+                </div>
+              ) : (
+                categories.map((c) => {
+                  const href = `/categories/${c.slug}`;
+                  const active =
+                    pathname === href || pathname.startsWith(href + "/");
+                  return (
+                    <Link
+                      key={c.id}
+                      href={href}
+                      onClick={() => setMobileOpen(false)}
+                      className={`block px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                        active
+                          ? "bg-orange-50 text-orange-600"
+                          : "text-neutral-800 hover:bg-orange-50 hover:text-orange-600"
+                      }`}
+                    >
+                      {c.name}
+                    </Link>
+                  );
+                })
+              )}
+
+              <div className="pt-4 mt-4 border-t border-neutral-200">
+                <Link
+                  href="/account"
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-3 py-2.5 rounded-md text-sm font-medium text-neutral-800 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                >
+                  My Account
+                </Link>
+                <Link
+                  href="/account/orders"
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-3 py-2.5 rounded-md text-sm font-medium text-neutral-800 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                >
+                  My Orders
+                </Link>
+              </div>
+            </nav>
+          </div>
+        </>
+      )}
+    </header>
   );
 }
