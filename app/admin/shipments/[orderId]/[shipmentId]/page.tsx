@@ -61,7 +61,7 @@ const formatINR = (paise: number) =>
   `₹${(paise / 100).toLocaleString("en-IN")}`;
 
 const inputCls =
-  "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500";
+  "w-full border border-neutral-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow";
 
 function Pill({ value }: { value: string }) {
   const s = value.toLowerCase();
@@ -77,7 +77,7 @@ function Pill({ value }: { value: string }) {
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
-      className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${cls}`}
+      className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
       {value.replace(/_/g, " ")}
     </span>
@@ -184,7 +184,6 @@ export default function ShipmentDetailPage() {
         updatedAt: serverTimestamp(),
       };
 
-      // Stamp timestamps on status transitions (only if not already set)
       if (
         (status === "in_transit" || status === "out_for_delivery") &&
         !shipment?.shippedAt
@@ -198,13 +197,12 @@ export default function ShipmentDetailPage() {
 
       await updateDoc(
         doc(db, "orders", orderId, "shipments", shipmentId),
-        payload
+        payload,
       );
 
       toast.success("Shipment updated");
       await load();
 
-      // Auto-sync parent order status when shipment is delivered
       if (status === "delivered") {
         try {
           await updateDoc(doc(db, "orders", orderId), {
@@ -234,7 +232,7 @@ export default function ShipmentDetailPage() {
 
   if (notFound || !shipment) {
     return (
-      <div className="bg-white rounded-xl border border-neutral-200 p-10 text-center">
+      <div className="bg-white border border-neutral-200 p-10 text-center max-w-lg mx-auto mt-10">
         <AlertCircle className="h-10 w-10 text-neutral-300 mx-auto" />
         <p className="mt-3 text-sm font-medium text-neutral-700">
           Shipment not found.
@@ -250,77 +248,71 @@ export default function ShipmentDetailPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={() => router.back()}
-          className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-neutral-900">
-            Shipment {shipment.trackingNumber || shipment.id.slice(0, 8)}
-          </h1>
-          <p className="text-sm text-neutral-500">
-            Order{" "}
-            <Link
-              href={`/admin/orders/${orderId}`}
-              className="font-mono text-orange-600 hover:underline"
-            >
-              {order?.orderNumber || orderId?.slice(0, 12)}
-            </Link>
-            {order?.email && <> · {order.email}</>}
-          </p>
+    <div className="max-w-5xl mx-auto space-y-4 pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            className="p-1.5 text-neutral-500 hover:bg-neutral-100 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-900">
+              Shipment {shipment.trackingNumber || shipment.id.slice(0, 8)}
+            </h1>
+            <p className="text-xs text-neutral-500">
+              Order{" "}
+              <Link
+                href={`/admin/orders/${orderId}`}
+                className="font-mono text-orange-600 hover:underline"
+              >
+                {order?.orderNumber || orderId?.slice(0, 12)}
+              </Link>
+              {order?.email && <> · {order.email}</>}
+            </p>
+          </div>
         </div>
         <Pill value={shipment.status} />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* LEFT: edit form */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* LEFT: Edit Form */}
         <form
           onSubmit={handleSave}
-          className="lg:col-span-2 bg-white rounded-xl border border-neutral-200 p-5 space-y-4"
+          className="lg:col-span-2 bg-white border border-neutral-200 p-4 space-y-3"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 border-b pb-2">
             <Truck className="h-4 w-4 text-orange-500" />
-            <h2 className="font-semibold text-neutral-900">
-              Shipment details
+            <h2 className="font-semibold text-sm text-neutral-900">
+              Shipment Details
             </h2>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-              Carrier *
-            </label>
+          <Field label="Carrier *">
             <input
               value={carrier}
               onChange={(e) => setCarrier(e.target.value)}
               required
               className={inputCls}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-              Tracking number *
-            </label>
+          <Field label="Tracking Number *">
             <input
               value={trackingNumber}
               onChange={(e) => setTrackingNumber(e.target.value)}
               required
               className={`${inputCls} font-mono`}
             />
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-              Tracking URL
-            </label>
+          <Field label="Tracking URL">
             <input
               value={trackingUrl}
               onChange={(e) => setTrackingUrl(e.target.value)}
-              placeholder="https://…"
+              placeholder="https://..."
               className={inputCls}
             />
             {trackingUrl && (
@@ -333,12 +325,12 @@ export default function ShipmentDetailPage() {
                 Preview <ExternalLink className="h-3 w-3" />
               </a>
             )}
-          </div>
+          </Field>
 
-          <div>
-            <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-              Status
-            </label>
+          <Field
+            label="Status"
+            hint='Setting "delivered" will auto-mark the parent order as delivered.'
+          >
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
@@ -350,39 +342,38 @@ export default function ShipmentDetailPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-neutral-500 mt-1">
-              Setting <strong>delivered</strong> will auto-mark the parent
-              order as delivered.
-            </p>
-          </div>
+          </Field>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-2 pt-2">
             <Link
               href="/admin/shipments"
-              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              className="border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
             >
               Cancel
             </Link>
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+              className="inline-flex items-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              {saving ? "Saving…" : "Save changes"}
+              {saving ? "Saving…" : "Save Changes"}
             </button>
           </div>
         </form>
 
-        {/* RIGHT: read-only meta */}
+        {/* RIGHT: Timeline & Order Info */}
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-3">Timeline</h2>
-            <dl className="space-y-3 text-sm">
+          {/* Timeline */}
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
+              Timeline
+            </h2>
+            <dl className="space-y-2.5 text-sm">
               <TimelineRow
                 label="Created"
                 value={
@@ -420,11 +411,14 @@ export default function ShipmentDetailPage() {
             </dl>
           </div>
 
+          {/* Order Info */}
           {order && (
-            <div className="bg-white rounded-xl border border-neutral-200 p-5">
-              <div className="flex items-center gap-2 mb-3">
+            <div className="bg-white border border-neutral-200 p-4">
+              <div className="flex items-center gap-2 border-b pb-2 mb-3">
                 <Package className="h-4 w-4 text-orange-500" />
-                <h2 className="font-semibold text-neutral-900">Order</h2>
+                <h2 className="font-semibold text-sm text-neutral-900">
+                  Order Info
+                </h2>
               </div>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between gap-3">
@@ -448,7 +442,7 @@ export default function ShipmentDetailPage() {
                 <div className="flex justify-between gap-3">
                   <dt className="text-neutral-500">Order status</dt>
                   <dd>
-                    <span className="text-xs uppercase tracking-wide text-neutral-700">
+                    <span className="text-[10px] uppercase tracking-wide font-medium text-neutral-700 border border-neutral-200 bg-neutral-100 px-1.5 py-0.5">
                       {order.status || "—"}
                     </span>
                   </dd>
@@ -456,7 +450,7 @@ export default function ShipmentDetailPage() {
               </dl>
               <Link
                 href={`/admin/orders/${orderId}`}
-                className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline"
               >
                 View full order <ExternalLink className="h-3 w-3" />
               </Link>
@@ -484,6 +478,26 @@ function TimelineRow({
         {label}
       </dt>
       <dd className="text-xs text-neutral-700 text-right">{value}</dd>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-neutral-700 mb-1">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="text-[10px] text-neutral-500 mt-1">{hint}</p>}
     </div>
   );
 }

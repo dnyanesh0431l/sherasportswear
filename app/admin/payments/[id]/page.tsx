@@ -77,26 +77,18 @@ function Pill({ value }: { value: string | null }) {
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
-      className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${cls}`}
+      className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
       {value || "—"}
     </span>
   );
 }
 
-function Row({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-2 border-b border-neutral-100 last:border-b-0">
       <dt className="text-sm text-neutral-500 shrink-0">{label}</dt>
-      <dd className="text-sm text-neutral-900 text-right break-all">
-        {value}
-      </dd>
+      <dd className="text-sm text-neutral-900 text-right break-all">{value}</dd>
     </div>
   );
 }
@@ -129,8 +121,7 @@ export default function PaymentDetailPage() {
         userId: p.userId || null,
         provider: p.provider || null,
         providerPaymentId: p.providerPaymentId || null,
-        amountPaise:
-          typeof p.amountPaise === "number" ? p.amountPaise : 0,
+        amountPaise: typeof p.amountPaise === "number" ? p.amountPaise : 0,
         currency: p.currency || "INR",
         status: p.status || null,
         method: p.method || null,
@@ -139,8 +130,8 @@ export default function PaymentDetailPage() {
         createdAt: toDate(p.createdAt),
         updatedAt: toDate(p.updatedAt),
       });
-    } catch (e) {
-      // surfaced below via notFound + error not critical
+    } catch {
+      // handled by notFound state
     } finally {
       setLoading(false);
     }
@@ -153,8 +144,8 @@ export default function PaymentDetailPage() {
       const snap = await getDocs(
         query(
           collection(db, "payments", id, "webhookEvents"),
-          orderBy("createdAt", "desc")
-        )
+          orderBy("createdAt", "desc"),
+        ),
       );
       setEvents(
         snap.docs.map((d) => {
@@ -169,7 +160,7 @@ export default function PaymentDetailPage() {
             createdAt: toDate(e.createdAt),
             payload: e.payload ?? null,
           };
-        })
+        }),
       );
     } catch {
       // ignore
@@ -193,7 +184,7 @@ export default function PaymentDetailPage() {
 
   if (notFound || !payment) {
     return (
-      <div className="bg-white rounded-xl border border-neutral-200 p-10 text-center">
+      <div className="bg-white border border-neutral-200 p-10 text-center max-w-lg mx-auto mt-10">
         <AlertCircle className="h-10 w-10 text-neutral-300 mx-auto" />
         <p className="mt-3 text-sm font-medium text-neutral-700">
           Payment not found.
@@ -209,33 +200,35 @@ export default function PaymentDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-4 pb-12">
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link
-          href="/admin/payments"
-          className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-neutral-900 font-mono">
-            {payment.id}
-          </h1>
-          <p className="text-sm text-neutral-500">
-            {payment.createdAt
-              ? payment.createdAt.toLocaleString("en-IN", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/payments"
+            className="p-1.5 text-neutral-500 hover:bg-neutral-100 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-900 font-mono">
+              {payment.id}
+            </h1>
+            <p className="text-xs text-neutral-500">
+              {payment.createdAt
+                ? payment.createdAt.toLocaleString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 text-xs uppercase tracking-wide bg-neutral-900 text-white rounded px-2 py-1">
+          <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-medium bg-neutral-900 text-white px-2 py-1">
             <CreditCard className="h-3 w-3" />
             {payment.provider || "unknown"}
           </span>
@@ -243,25 +236,24 @@ export default function PaymentDetailPage() {
         </div>
       </div>
 
-      {/* Important note about read-only */}
-      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      {/* Read-only warning */}
+      <div className="flex items-start gap-2 border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
         <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
         <div>
-          <p className="font-medium">Read-only.</p>
+          <p className="font-medium">Read-only</p>
           <p className="text-xs mt-0.5">
-            Payment state is driven by the provider webhook. To refund,
-            cancel, or reconcile, use the provider dashboard. This page is
-            for inspection only.
+            Payment state is driven by the provider webhook. To refund, cancel,
+            or reconcile, use the provider dashboard.
           </p>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* LEFT */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Amount hero */}
-          <div className="bg-gradient-to-br from-neutral-900 to-neutral-800 rounded-xl p-6 text-white">
-            <div className="text-xs uppercase tracking-wide text-neutral-400">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Amount Hero */}
+          <div className="bg-neutral-900 text-white p-5 border border-neutral-800">
+            <div className="text-[10px] uppercase tracking-wider text-neutral-400">
               Amount
             </div>
             <div className="mt-1 text-3xl font-bold flex items-center gap-1">
@@ -271,15 +263,15 @@ export default function PaymentDetailPage() {
                 {payment.currency}
               </span>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <Pill value={payment.status} />
               {payment.method && (
-                <span className="text-xs bg-white/10 px-2 py-0.5 rounded uppercase">
+                <span className="text-[10px] bg-white/10 px-2 py-0.5 uppercase tracking-wide border border-white/10">
                   {payment.method}
                 </span>
               )}
               {payment.capturedAt && (
-                <span className="text-xs text-neutral-300">
+                <span className="text-[11px] text-neutral-300">
                   Captured{" "}
                   {payment.capturedAt.toLocaleDateString("en-IN", {
                     day: "2-digit",
@@ -290,23 +282,25 @@ export default function PaymentDetailPage() {
               )}
             </div>
             {payment.failureReason && (
-              <div className="mt-4 rounded-md bg-red-500/20 border border-red-400/40 px-3 py-2 text-sm text-red-100">
+              <div className="mt-3 bg-red-500/20 border border-red-400/40 px-3 py-2 text-sm text-red-100">
                 <span className="font-medium">Failure: </span>
                 {payment.failureReason}
               </div>
             )}
           </div>
 
-          {/* Payment details */}
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-3">Details</h2>
+          {/* Details */}
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-2">
+              Payment Details
+            </h2>
             <dl className="divide-y divide-neutral-100">
               <Row
                 label="Payment ID"
                 value={<span className="font-mono text-xs">{payment.id}</span>}
               />
               <Row
-                label="Provider payment ID"
+                label="Provider Payment ID"
                 value={
                   payment.providerPaymentId ? (
                     <span className="font-mono text-xs">
@@ -339,9 +333,7 @@ export default function PaymentDetailPage() {
                 label="Customer UID"
                 value={
                   payment.userId ? (
-                    <span className="font-mono text-xs">
-                      {payment.userId}
-                    </span>
+                    <span className="font-mono text-xs">{payment.userId}</span>
                   ) : (
                     "guest"
                   )
@@ -367,19 +359,18 @@ export default function PaymentDetailPage() {
           </div>
         </div>
 
-        {/* RIGHT: webhook events */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
+        {/* RIGHT */}
+        <div className="space-y-4">
+          {/* Webhook Events */}
+          <div className="bg-white border border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
               <div className="flex items-center gap-2">
                 <Webhook className="h-4 w-4 text-orange-500" />
-                <h2 className="font-semibold text-neutral-900">
-                  Webhook events
+                <h2 className="font-semibold text-sm text-neutral-900">
+                  Webhook Events
                 </h2>
               </div>
-              <span className="text-xs text-neutral-500">
-                {events.length}
-              </span>
+              <span className="text-xs text-neutral-500">{events.length}</span>
             </div>
 
             {eventsLoading ? (
@@ -400,10 +391,8 @@ export default function PaymentDetailPage() {
                     <li key={e.id}>
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedId(expanded ? null : e.id)
-                        }
-                        className="w-full px-4 py-3 text-left hover:bg-neutral-50"
+                        onClick={() => setExpandedId(expanded ? null : e.id)}
+                        className="w-full px-3 py-2 text-left hover:bg-neutral-50 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -413,33 +402,32 @@ export default function PaymentDetailPage() {
                               </span>
                               <Pill value={e.status} />
                             </div>
-                            <div className="text-[11px] text-neutral-500 mt-1 truncate font-mono">
+                            <div className="text-[10px] text-neutral-500 mt-0.5 truncate font-mono">
                               {e.providerEventId || e.id}
                             </div>
-                            <div className="text-[11px] text-neutral-400 mt-0.5">
+                            <div className="text-[10px] text-neutral-400 mt-0.5">
                               {e.createdAt
                                 ? e.createdAt.toLocaleString("en-IN")
                                 : "—"}
                             </div>
                           </div>
                           {expanded ? (
-                            <ChevronDown className="h-4 w-4 text-neutral-400 shrink-0 mt-1" />
+                            <ChevronDown className="h-4 w-4 text-neutral-400 shrink-0 mt-0.5" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-neutral-400 shrink-0 mt-1" />
+                            <ChevronRight className="h-4 w-4 text-neutral-400 shrink-0 mt-0.5" />
                           )}
                         </div>
                       </button>
 
                       {expanded && (
-                        <div className="px-4 pb-4">
-                          <div className="mb-2 flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                        <div className="px-3 pb-3">
+                          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1">
                             <AlertTriangle className="h-3 w-3 shrink-0" />
                             <span>
-                              Contains sensitive provider data — do not share
-                              or export.
+                              Contains sensitive provider data — do not share.
                             </span>
                           </div>
-                          <pre className="text-[11px] font-mono bg-neutral-950 text-neutral-100 rounded-md p-3 overflow-x-auto max-h-80 overflow-y-auto">
+                          <pre className="text-[10px] font-mono bg-neutral-950 text-neutral-100 p-2.5 overflow-x-auto max-h-64 overflow-y-auto">
                             {JSON.stringify(e.payload ?? {}, null, 2)}
                           </pre>
                         </div>
@@ -451,9 +439,10 @@ export default function PaymentDetailPage() {
             )}
           </div>
 
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-2">
-              Provider dashboard
+          {/* Provider Dashboard */}
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-2">
+              Provider Dashboard
             </h2>
             <p className="text-xs text-neutral-600 mb-3">
               Open the provider's dashboard to inspect gateway logs, process

@@ -64,7 +64,7 @@ function StatusPill({ value }: { value: string }) {
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
-      className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${cls}`}
+      className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
       {value.replace(/_/g, " ")}
     </span>
@@ -119,8 +119,6 @@ export default function ShipmentsListPage() {
       );
     } catch (e) {
       const msg = (e as Error)?.message || "Failed to load shipments";
-      // Firebase embeds the one-click index creation link in the error message.
-      // Example: "The query requires an index. You can create it here: https://console.firebase.google.com/v1/r/project/.../firestore/indexes?create_composite=..."
       const match = msg.match(
         /https:\/\/console\.firebase\.google\.com\/[^\s"']+/,
       );
@@ -176,26 +174,29 @@ export default function ShipmentsListPage() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="max-w-7xl mx-auto space-y-4 pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Shipments</h1>
-          <p className="text-sm text-neutral-500 mt-1">
+          <h1 className="text-xl font-bold text-neutral-900">Shipments</h1>
+          <p className="text-xs text-neutral-500 mt-0.5">
             {items.length} total · {filtered.length} shown · across all orders
           </p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-60"
+          className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+          />
           Refresh
         </button>
       </div>
 
       {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <div>{error}</div>
@@ -207,7 +208,7 @@ export default function ShipmentsListPage() {
                     href={indexUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                    className="inline-flex items-center gap-1.5 bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
                   >
                     Open index creation page
                     <ExternalLink className="h-3 w-3" />
@@ -215,7 +216,7 @@ export default function ShipmentsListPage() {
                   <button
                     type="button"
                     onClick={copyIndexUrl}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                    className="inline-flex items-center gap-1.5 border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
                   >
                     {copied ? (
                       <>
@@ -228,7 +229,7 @@ export default function ShipmentsListPage() {
                     )}
                   </button>
                 </div>
-                <div className="rounded-md border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-red-800 break-all select-all">
+                <div className="border border-red-200 bg-white px-2 py-1.5 font-mono text-[11px] text-red-800 break-all select-all">
                   {indexUrl}
                 </div>
                 <p className="text-[11px] text-red-600/80">
@@ -242,50 +243,50 @@ export default function ShipmentsListPage() {
       )}
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-neutral-200 p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-500">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white border border-neutral-200 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-medium text-neutral-500">
             Pending
           </div>
-          <div className="mt-2 text-xl font-bold text-amber-600">
+          <div className="mt-1 text-lg font-bold text-amber-600">
             {stats.pending}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-neutral-200 p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-500">
-            In transit
+        <div className="bg-white border border-neutral-200 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-medium text-neutral-500">
+            In Transit
           </div>
-          <div className="mt-2 text-xl font-bold text-blue-600">
+          <div className="mt-1 text-lg font-bold text-blue-600">
             {stats.inTransit}
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-neutral-200 p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-500">
+        <div className="bg-white border border-neutral-200 p-4">
+          <div className="text-[11px] uppercase tracking-wider font-medium text-neutral-500">
             Delivered
           </div>
-          <div className="mt-2 text-xl font-bold text-emerald-600">
+          <div className="mt-1 text-lg font-bold text-emerald-600">
             {stats.delivered}
           </div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-wrap items-center gap-3">
+      <div className="bg-white border border-neutral-200 p-3 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by tracking #, carrier, order…"
-            className="w-full pl-9 pr-3 py-2 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="Search by tracking #, carrier, order..."
+            className="w-full pl-8 pr-3 py-1.5 border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm bg-white"
+          className="border border-neutral-300 px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="all">All statuses</option>
+          <option value="all">All Statuses</option>
           {SHIPMENT_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s.replace(/_/g, " ")}
@@ -295,9 +296,9 @@ export default function ShipmentsListPage() {
         <select
           value={carrierFilter}
           onChange={(e) => setCarrierFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm bg-white"
+          className="border border-neutral-300 px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="all">All carriers</option>
+          <option value="all">All Carriers</option>
           {carriers.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -307,7 +308,7 @@ export default function ShipmentsListPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+      <div className="bg-white border border-neutral-200 overflow-hidden">
         {loading ? (
           <div className="p-10 text-center">
             <Loader2 className="h-6 w-6 animate-spin text-orange-500 mx-auto" />
@@ -336,22 +337,34 @@ export default function ShipmentsListPage() {
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-neutral-600 border-b border-neutral-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Order</th>
-                  <th className="px-4 py-3 text-left font-medium">Carrier</th>
-                  <th className="px-4 py-3 text-left font-medium">Tracking</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">Shipped</th>
-                  <th className="px-4 py-3 text-left font-medium">Delivered</th>
-                  <th className="px-4 py-3 text-right font-medium"></th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Order
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Carrier
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Tracking
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Shipped
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Delivered
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filtered.map((s) => (
                   <tr
                     key={`${s.orderId}-${s.id}`}
-                    className="hover:bg-neutral-50"
+                    className="hover:bg-neutral-50 transition-colors"
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <Link
                         href={`/admin/orders/${s.orderId}`}
                         className="font-mono text-xs font-semibold text-orange-600 hover:underline"
@@ -359,12 +372,12 @@ export default function ShipmentsListPage() {
                         {s.orderId.slice(0, 10)}…
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex text-[11px] uppercase tracking-wide bg-neutral-100 text-neutral-700 rounded px-2 py-0.5">
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex text-[10px] uppercase tracking-wide font-medium bg-neutral-100 text-neutral-700 border border-neutral-200 px-2 py-0.5">
                         {s.carrier || "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="font-mono text-xs text-neutral-700">
                         {s.trackingNumber || "—"}
                       </div>
@@ -373,16 +386,16 @@ export default function ShipmentsListPage() {
                           href={s.trackingUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] text-orange-600 hover:underline inline-flex items-center gap-0.5"
+                          className="text-[10px] text-orange-600 hover:underline inline-flex items-center gap-0.5"
                         >
                           Track <ExternalLink className="h-2.5 w-2.5" />
                         </a>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <StatusPill value={s.status} />
                     </td>
-                    <td className="px-4 py-3 text-xs text-neutral-600 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">
                       {s.shippedAt
                         ? s.shippedAt.toLocaleDateString("en-IN", {
                             day: "2-digit",
@@ -390,7 +403,7 @@ export default function ShipmentsListPage() {
                           })
                         : "—"}
                     </td>
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap">
                       {s.deliveredAt ? (
                         <span className="inline-flex items-center gap-1 text-emerald-600">
                           <CheckCircle2 className="h-3 w-3" />
@@ -403,10 +416,10 @@ export default function ShipmentsListPage() {
                         <span className="text-neutral-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-2.5 text-right">
                       <Link
                         href={`/admin/shipments/${s.orderId}/${s.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:text-orange-700"
+                        className="inline-flex items-center gap-0.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:underline px-2 py-1"
                       >
                         Manage <ChevronRight className="h-3 w-3" />
                       </Link>

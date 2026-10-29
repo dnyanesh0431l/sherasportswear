@@ -115,9 +115,7 @@ export default function BannersListPage() {
         !b.isActive ? `"${b.title}" activated` : `"${b.title}" deactivated`
       );
       setItems((prev) =>
-        prev.map((x) =>
-          x.id === b.id ? { ...x, isActive: !b.isActive } : x
-        )
+        prev.map((x) => (x.id === b.id ? { ...x, isActive: !b.isActive } : x))
       );
     } catch (e) {
       toast.error((e as Error)?.message || "Failed to toggle");
@@ -127,7 +125,7 @@ export default function BannersListPage() {
   };
 
   const handleDelete = async (b: Banner) => {
-    if (!confirm(`Delete banner "${b.title}"? This cannot be undone.`))
+    if (!confirm(`Are you sure you want to delete "${b.title}"? This cannot be undone.`))
       return;
     setDeleting(b.id);
     try {
@@ -135,18 +133,20 @@ export default function BannersListPage() {
       toast.success(`Deleted "${b.title}"`);
       setItems((prev) => prev.filter((x) => x.id !== b.id));
     } catch (e) {
-      toast.error((e as Error)?.message || "Delete failed");
+      toast.error((e as Error)?.message || "Failed to delete banner");
     } finally {
       setDeleting(null);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="max-w-7xl mx-auto space-y-4 pb-12">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Banners</h1>
-          <p className="text-sm text-neutral-500 mt-1">
+          <h1 className="text-xl font-bold text-neutral-900">Banners</h1>
+          <p className="text-xs text-neutral-500 mt-0.5">
             {items.length} total · {filtered.length} shown
           </p>
         </div>
@@ -154,34 +154,35 @@ export default function BannersListPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-60"
+            className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </button>
           <Link
             href="/admin/banners/new"
-            className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+            className="inline-flex items-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600"
           >
-            <Plus className="h-4 w-4" /> Add banner
+            <Plus className="h-4 w-4" /> Add Banner
           </Link>
         </div>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-2 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-neutral-200 p-4">
+      {/* Filter */}
+      <div className="bg-white border border-neutral-200 p-3 flex items-center gap-2">
         <select
           value={placementFilter}
           onChange={(e) => setPlacementFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm bg-white"
+          className="border border-neutral-300 px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="all">All placements</option>
+          <option value="all">All Placements</option>
           {placements.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -191,27 +192,30 @@ export default function BannersListPage() {
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-neutral-200 p-10 text-center">
+        <div className="bg-white border border-neutral-200 p-10 text-center">
           <Loader2 className="h-6 w-6 animate-spin text-orange-500 mx-auto" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-neutral-200 p-10 text-center">
+        <div className="bg-white border border-neutral-200 p-10 text-center">
           <ImageIcon className="h-10 w-10 text-neutral-300 mx-auto" />
           <p className="mt-3 text-sm font-medium text-neutral-700">
-            {items.length === 0
-              ? "No banners yet"
-              : "No banners for this placement"}
+            {items.length === 0 ? "No banners yet" : "No banners for this placement"}
           </p>
+          {items.length === 0 && (
+            <Link href="/admin/banners/new" className="inline-block mt-3 text-sm text-orange-600 hover:underline">
+              Create your first banner
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((b) => (
             <div
               key={b.id}
-              className="bg-white rounded-xl border border-neutral-200 overflow-hidden flex flex-col"
+              className="bg-white border border-neutral-200 flex flex-col"
             >
-              {/* Image */}
-              <div className="relative bg-neutral-100 aspect-[16/9]">
+              {/* Image Preview */}
+              <div className="relative bg-neutral-100 aspect-[16/9] border-b border-neutral-200">
                 {b.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -224,21 +228,23 @@ export default function BannersListPage() {
                     <ImageIcon className="h-10 w-10 text-neutral-300" />
                   </div>
                 )}
-                <div className="absolute top-2 left-2 flex gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wide bg-neutral-900/80 text-white px-2 py-0.5 rounded-full">
+                
+                {/* Overlay Badges */}
+                <div className="absolute top-2 left-2 flex gap-1">
+                  <span className="text-[9px] uppercase tracking-wider font-medium bg-neutral-900/80 text-white px-1.5 py-0.5 border border-white/10">
                     {b.placement || "no placement"}
                   </span>
-                  <span className="text-[10px] uppercase tracking-wide bg-neutral-900/80 text-white px-2 py-0.5 rounded-full">
+                  <span className="text-[9px] uppercase tracking-wider font-medium bg-neutral-900/80 text-white px-1.5 py-0.5 border border-white/10">
                     #{b.sortOrder}
                   </span>
                 </div>
                 <div className="absolute top-2 right-2">
                   {b.isActive ? (
-                    <span className="text-[10px] uppercase tracking-wide bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                    <span className="text-[9px] uppercase tracking-wider font-medium bg-emerald-500 text-white px-1.5 py-0.5 border border-emerald-600">
                       Active
                     </span>
                   ) : (
-                    <span className="text-[10px] uppercase tracking-wide bg-neutral-500 text-white px-2 py-0.5 rounded-full">
+                    <span className="text-[9px] uppercase tracking-wider font-medium bg-neutral-500 text-white px-1.5 py-0.5 border border-neutral-600">
                       Inactive
                     </span>
                   )}
@@ -246,27 +252,27 @@ export default function BannersListPage() {
               </div>
 
               {/* Body */}
-              <div className="p-4 flex-1 flex flex-col">
-                <h3 className="font-semibold text-neutral-900 truncate">
+              <div className="p-3 flex-1 flex flex-col">
+                <h3 className="font-semibold text-sm text-neutral-900 truncate">
                   {b.title || "(no title)"}
                 </h3>
                 {b.subtitle && (
-                  <p className="text-xs text-neutral-500 mt-1 line-clamp-2">
+                  <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-2">
                     {b.subtitle}
                   </p>
                 )}
                 {b.ctaLabel && (
-                  <div className="mt-2 inline-flex items-center gap-1 self-start rounded-md bg-orange-50 text-orange-700 text-xs px-2 py-0.5">
+                  <div className="mt-2 inline-flex items-center gap-1 self-start bg-orange-50 text-orange-700 text-[10px] font-medium px-1.5 py-0.5 border border-orange-200">
                     {b.ctaLabel}
                     {b.ctaUrl && (
-                      <span className="font-mono text-[10px] text-orange-600/70 truncate max-w-[120px]">
+                      <span className="font-mono text-[9px] text-orange-600/70 truncate max-w-[120px]">
                         → {b.ctaUrl}
                       </span>
                     )}
                   </div>
                 )}
                 {(b.startsAt || b.endsAt) && (
-                  <div className="text-[11px] text-neutral-500 mt-2">
+                  <div className="text-[10px] text-neutral-500 mt-2">
                     {b.startsAt && (
                       <div>
                         From{" "}
@@ -291,11 +297,11 @@ export default function BannersListPage() {
                 )}
 
                 {/* Actions */}
-                <div className="mt-4 pt-3 border-t border-neutral-100 flex items-center gap-1">
+                <div className="mt-3 pt-2 border-t border-neutral-100 flex items-center gap-1">
                   <button
                     onClick={() => toggleActive(b)}
                     disabled={togglingId === b.id}
-                    className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100 disabled:opacity-50"
+                    className="p-1.5 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-50 transition-colors"
                     title={b.isActive ? "Deactivate" : "Activate"}
                   >
                     {togglingId === b.id ? (
@@ -308,7 +314,7 @@ export default function BannersListPage() {
                   </button>
                   <Link
                     href={`/admin/banners/${b.id}/edit`}
-                    className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-orange-600"
+                    className="p-1.5 text-neutral-500 hover:bg-neutral-200 hover:text-orange-600 transition-colors"
                     title="Edit"
                   >
                     <Edit3 className="h-4 w-4" />
@@ -317,7 +323,7 @@ export default function BannersListPage() {
                   <button
                     onClick={() => handleDelete(b)}
                     disabled={deleting === b.id}
-                    className="p-2 rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    className="p-1.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-50 transition-colors"
                     title="Delete"
                   >
                     {deleting === b.id ? (
