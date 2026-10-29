@@ -8,10 +8,7 @@
 // Seeds catalog + CMS + customers + carts + orders + payments + shipments.
 // WARNING: This wipes orders, carts, payments, idempotencyKeys and every
 //          users/{uid}/addresses & users/{uid}/wishlist before recreating them.
-//
-// Default logins:
-//   Admin:    dhakanearvind900@gmail.com / admin@123
-//   Customer: any seeded customer email / Customer@123
+//          It also wipes categories, collections, brands, and products.
 
 import {
   applicationDefault,
@@ -176,6 +173,9 @@ function weightedPick<T>(items: T[], weights: number[]): T {
   return items[items.length - 1];
 }
 
+// Helper to make Firestore-safe IDs
+const safeId = (str: string) => str.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+
 // ---------------------------------------------------------------------------
 // Admin user
 // ---------------------------------------------------------------------------
@@ -219,22 +219,39 @@ async function ensureAdminUser(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Catalog data
+// Catalog Data: Brands, Categories, Collections
 // ---------------------------------------------------------------------------
+const brands = [
+  { id: "columbus", name: "Columbus", slug: "columbus", status: "active" },
+  { id: "shera", name: "Shera", slug: "shera", status: "active" },
+];
+
 const categories = [
-  { id: "men", name: "Men", slug: "men", sortOrder: 1, status: "active" },
-  { id: "women", name: "Women", slug: "women", sortOrder: 2, status: "active" },
   {
-    id: "accessories",
-    name: "Accessories",
-    slug: "accessories",
+    id: "running",
+    name: "Running",
+    slug: "running",
+    sortOrder: 1,
+    status: "active",
+  },
+  {
+    id: "training",
+    name: "Training & Gym",
+    slug: "training",
+    sortOrder: 2,
+    status: "active",
+  },
+  {
+    id: "walking",
+    name: "Walking",
+    slug: "walking",
     sortOrder: 3,
     status: "active",
   },
   {
-    id: "footwear",
-    name: "Footwear",
-    slug: "footwear",
+    id: "accessories",
+    name: "Accessories",
+    slug: "accessories",
     sortOrder: 4,
     status: "active",
   },
@@ -249,24 +266,31 @@ const collections = [
     status: "active",
   },
   {
-    id: "training",
-    name: "Training",
-    slug: "training",
+    id: "carbon-racing",
+    name: "Carbon Racing",
+    slug: "carbon-racing",
     sortOrder: 2,
     status: "active",
   },
   {
-    id: "running",
-    name: "Running",
-    slug: "running",
+    id: "bestsellers",
+    name: "Bestsellers",
+    slug: "bestsellers",
     sortOrder: 3,
     status: "active",
   },
 ];
 
-const IMG = (label: string) =>
-  `https://placehold.co/800x1000/111111/FF6B00?text=${encodeURIComponent(label)}`;
+const IMG = (
+  label: string,
+  hexBg: string = "111111",
+  hexFg: string = "FF6B00",
+) =>
+  `https://placehold.co/800x1000/${hexBg}/${hexFg}?text=${encodeURIComponent(label)}`;
 
+// ---------------------------------------------------------------------------
+// Product Data (Based on provided images)
+// ---------------------------------------------------------------------------
 type SeedProduct = {
   id: string;
   name: string;
@@ -275,8 +299,12 @@ type SeedProduct = {
   productType: string;
   categoryId: string;
   collectionIds: string[];
+  brandId: string;
+  brandName: string;
+  gender: "men" | "women" | "unisex";
   basePricePaise: number;
   mrpPaise: number;
+  inventoryValue: number; // Total stock across variants
   attributes: Record<string, any>;
   sizes: string[];
   colors: string[];
@@ -284,175 +312,407 @@ type SeedProduct = {
 
 const products: SeedProduct[] = [
   {
-    id: "shera-dry-tee",
-    name: "Shera Dry-Fit Training Tee",
-    slug: "shera-dry-fit-training-tee",
+    id: "columbus-victory",
+    name: "Columbus Victory",
+    slug: "columbus-victory",
     description:
-      "Lightweight, moisture-wicking tee built for high-intensity training.",
-    productType: "T-Shirt",
-    categoryId: "men",
-    collectionIds: ["new-arrivals", "training"],
-    basePricePaise: 129900,
-    mrpPaise: 179900,
-    attributes: { fabric: "Polyester", fit: "Regular", gender: "Men" },
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Black", "White", "Orange"],
-  },
-  {
-    id: "shera-run-shorts",
-    name: "Shera Pro Run Shorts",
-    slug: "shera-pro-run-shorts",
-    description: "7-inch running shorts with liner and zip pocket.",
-    productType: "Shorts",
-    categoryId: "men",
-    collectionIds: ["running"],
-    basePricePaise: 99900,
-    mrpPaise: 149900,
-    attributes: {
-      fabric: "Recycled Polyester",
-      fit: "Athletic",
-      gender: "Men",
-    },
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Black", "Charcoal"],
-  },
-  {
-    id: "shera-flex-leggings",
-    name: "Shera Flex Training Leggings",
-    slug: "shera-flex-training-leggings",
-    description: "High-waist, squat-proof leggings with four-way stretch.",
-    productType: "Leggings",
-    categoryId: "women",
-    collectionIds: ["new-arrivals", "training"],
-    basePricePaise: 159900,
-    mrpPaise: 219900,
-    attributes: { fabric: "Nylon-Spandex", fit: "Slim", gender: "Women" },
-    sizes: ["XS", "S", "M", "L"],
-    colors: ["Black", "Orange"],
-  },
-  {
-    id: "shera-court-shoe",
-    name: "Shera Court Trainer",
-    slug: "shera-court-trainer",
-    description: "Cushioned court shoe for cross-training and HIIT.",
+      "Experience ultimate comfort and speed with the Columbus Victory. Features a breathable mesh upper and a responsive sole.",
     productType: "Shoe",
-    categoryId: "footwear",
-    collectionIds: ["training"],
-    basePricePaise: 349900,
-    mrpPaise: 449900,
-    attributes: { upper: "Mesh", sole: "Rubber", gender: "Unisex" },
-    sizes: ["6", "7", "8", "9", "10", "11"],
-    colors: ["Black", "White"],
+    categoryId: "running",
+    collectionIds: ["new-arrivals", "bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "men",
+    basePricePaise: 239900,
+    mrpPaise: 239900,
+    inventoryValue: 150,
+    attributes: { cushioning: "High", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Mist/Aqua", "Black/L.Yellow"],
   },
   {
-    id: "shera-compression-tee",
-    name: "Shera Compression Training Tee",
-    slug: "shera-compression-training-tee",
-    description: "Second-skin compression tee engineered for mobility.",
-    productType: "T-Shirt",
-    categoryId: "men",
-    collectionIds: ["training"],
-    basePricePaise: 149900,
-    mrpPaise: 199900,
-    attributes: { fabric: "Elastane Blend", fit: "Compression", gender: "Men" },
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Black", "Charcoal", "Navy"],
+    id: "columbus-freemove",
+    name: "Columbus Freemove",
+    slug: "columbus-freemove",
+    description:
+      "Built with Carbon Tech for explosive speed. Ideal for race day and tempo runs.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["carbon-racing", "bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 219900,
+    mrpPaise: 219900,
+    inventoryValue: 120,
+    attributes: { tech: "Carbon Plate", drop: "6mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["White/L.Pista", "Ember Grn/Black", "White/Black"],
   },
   {
-    id: "shera-track-pants",
-    name: "Shera Tapered Track Pants",
-    slug: "shera-tapered-track-pants",
-    description: "Everyday tapered track pants with zip pockets.",
-    productType: "Track Pants",
-    categoryId: "men",
-    collectionIds: ["running"],
-    basePricePaise: 179900,
-    mrpPaise: 249900,
-    attributes: { fabric: "Cotton-Poly", fit: "Tapered", gender: "Men" },
-    sizes: ["S", "M", "L", "XL"],
-    colors: ["Black", "Grey"],
+    id: "columbus-destiny",
+    name: "Columbus Destiny",
+    slug: "columbus-destiny",
+    description:
+      "Reliable daily trainer with Carbon Racing technology for consistent performance.",
+    productType: "Shoe",
+    categoryId: "training",
+    collectionIds: ["new-arrivals"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "men",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 80,
+    attributes: { tech: "Carbon Tech", drop: "8mm", terrain: "Road/Gym" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Mouse/L.Grey", "Black/D.Grey", "White/Black"],
   },
   {
-    id: "shera-sports-bra",
-    name: "Shera Support Sports Bra",
-    slug: "shera-support-sports-bra",
-    description: "Medium-support sports bra with removable pads.",
-    productType: "Sports Bra",
-    categoryId: "women",
-    collectionIds: ["training"],
-    basePricePaise: 119900,
-    mrpPaise: 169900,
+    id: "columbus-streak",
+    name: "Columbus Streak",
+    slug: "columbus-streak",
+    description:
+      "Lightweight and breathable. Features Boom Fiber midsole for maximum energy return.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["new-arrivals"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "women",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 95,
+    attributes: { tech: "Boom Fiber", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Wht-Blk", "L.Sky-R.Slt", "Wht-L.Yellow", "Blk-Slvr"],
+  },
+  {
+    id: "columbus-facelift",
+    name: "Columbus Facelift",
+    slug: "columbus-facelift",
+    description:
+      "Next Gen design meets everyday comfort. Perfect for casual runs and workouts.",
+    productType: "Shoe",
+    categoryId: "walking",
+    collectionIds: ["bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 110,
     attributes: {
-      fabric: "Nylon-Spandex",
-      support: "Medium",
-      gender: "Women",
+      generation: "Next Gen",
+      drop: "10mm",
+      terrain: "Road/Walking",
     },
-    sizes: ["XS", "S", "M", "L"],
-    colors: ["Black", "Orange", "White"],
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Blk/Sky", "L.Grey/D.Grey", "Wht/L.Pista"],
   },
   {
-    id: "shera-yoga-top",
-    name: "Shera Flow Yoga Tank",
-    slug: "shera-flow-yoga-tank",
-    description: "Breathable yoga tank with relaxed drape.",
-    productType: "Tank Top",
-    categoryId: "women",
+    id: "columbus-rift",
+    name: "Columbus Rift",
+    slug: "columbus-rift",
+    description:
+      "Durable and stylish. Built to withstand the rigors of daily training.",
+    productType: "Shoe",
+    categoryId: "training",
     collectionIds: ["new-arrivals"],
-    basePricePaise: 109900,
-    mrpPaise: 149900,
-    attributes: { fabric: "Modal Blend", fit: "Relaxed", gender: "Women" },
-    sizes: ["XS", "S", "M", "L"],
-    colors: ["Black", "Teal"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "men",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 60,
+    attributes: { durability: "High", drop: "8mm", terrain: "Gym/Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Mid.Gry/D.Grey", "Black/Silver", "White/Black"],
   },
   {
-    id: "shera-training-hoodie",
-    name: "Shera Training Hoodie",
-    slug: "shera-training-hoodie",
-    description: "Midweight fleece hoodie for warm-ups and recovery days.",
-    productType: "Hoodie",
-    categoryId: "men",
-    collectionIds: ["new-arrivals", "training"],
-    basePricePaise: 249900,
-    mrpPaise: 349900,
-    attributes: { fabric: "Cotton Fleece", fit: "Regular", gender: "Unisex" },
-    sizes: ["S", "M", "L", "XL", "XXL"],
-    colors: ["Black", "Charcoal"],
+    id: "columbus-solar",
+    name: "Columbus Solar",
+    slug: "columbus-solar",
+    description:
+      "Glide through your runs with the Solar's smooth transition and carbon tech.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["carbon-racing"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "women",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 75,
+    attributes: { tech: "Carbon Tech", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Slvr Gry/Slt Blu", "Wht/L.Gry", "Black/D.Gry"],
   },
   {
-    id: "shera-gym-cap",
-    name: "Shera Performance Cap",
-    slug: "shera-performance-cap",
-    description: "Lightweight training cap with moisture-wicking sweatband.",
-    productType: "Cap",
+    id: "columbus-cubic",
+    name: "Columbus Cubic",
+    slug: "columbus-cubic",
+    description:
+      "Perfect entry-level running shoe with Next Gen 9.0 technology.",
+    productType: "Shoe",
+    categoryId: "walking",
+    collectionIds: ["bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 179900,
+    mrpPaise: 179900,
+    inventoryValue: 200,
+    attributes: {
+      generation: "Next Gen 9.0",
+      drop: "10mm",
+      terrain: "Road/Walking",
+    },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["D.Grey/Blk/Sage.Grn", "Wht/Mist/Mstd", "Wht/Lt.Yllw"],
+  },
+  {
+    id: "columbus-arcade",
+    name: "Columbus Arcade",
+    slug: "columbus-arcade",
+    description:
+      "Stylish runner with great cushioning. Perfect for long distances.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["new-arrivals"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "women",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 90,
+    attributes: { cushioning: "Max", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: [
+      "Mist/F.Ornge",
+      "Blk/Silver",
+      "Slvr Gry/Powder.Blu",
+      "Pista Grn/Mustard",
+    ],
+  },
+  {
+    id: "columbus-stanfield",
+    name: "Columbus Stanfield",
+    slug: "columbus-stanfield",
+    description:
+      "Comfort meets performance. Next Gen 9.0 midsole for a plush ride.",
+    productType: "Shoe",
+    categoryId: "walking",
+    collectionIds: ["bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "men",
+    basePricePaise: 179900,
+    mrpPaise: 179900,
+    inventoryValue: 130,
+    attributes: { generation: "Next Gen 9.0", drop: "10mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Wht/L.Yellow"],
+  },
+  {
+    id: "columbus-vision",
+    name: "Columbus Vision",
+    slug: "columbus-vision",
+    description:
+      "Elevate your running experience with Vision. Next Gen 9.0 technology.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["new-arrivals"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 219900,
+    mrpPaise: 219900,
+    inventoryValue: 105,
+    attributes: { generation: "Next Gen 9.0", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: [
+      "Wht/Mist/Blk",
+      "Wht/L.Pista",
+      "Wht/Topaz Blue",
+      "Wht/R.Slate/F.Orng",
+    ],
+  },
+  {
+    id: "columbus-ember",
+    name: "Columbus Ember",
+    slug: "columbus-ember",
+    description:
+      "Carbon racing shoe for serious athletes. Lightweight and responsive.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["carbon-racing"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "men",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 45,
+    attributes: { tech: "Carbon Tech", drop: "6mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Blk/White", "L.Grey/Blk", "Mouse/Silver"],
+  },
+  {
+    id: "columbus-longrun",
+    name: "Columbus Longrun",
+    slug: "columbus-longrun",
+    description:
+      "Designed for long distances. Maximum comfort and carbon tech propulsion.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["carbon-racing", "bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "women",
+    basePricePaise: 219900,
+    mrpPaise: 219900,
+    inventoryValue: 85,
+    attributes: { tech: "Carbon Tech", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: [
+      "Wht/Mist/Black",
+      "White/Pista/Orange",
+      "Wht/L.Pista/Lemon Yellow",
+      "Aqua Grn/Blk",
+    ],
+  },
+  {
+    id: "columbus-aeroflow",
+    name: "Columbus Aeroflow",
+    slug: "columbus-aeroflow",
+    description: "Aerodynamic design for speed. Carbon racing technology.",
+    productType: "Shoe",
+    categoryId: "running",
+    collectionIds: ["carbon-racing"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 189900,
+    mrpPaise: 189900,
+    inventoryValue: 70,
+    attributes: { tech: "Carbon Tech", drop: "8mm", terrain: "Road" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Wht/D.Gry/Mist"],
+  },
+  {
+    id: "columbus-cliq",
+    name: "Columbus Cliq",
+    slug: "columbus-cliq",
+    description: "Sleek and modern lifestyle shoe with running DNA.",
+    productType: "Shoe",
+    categoryId: "walking",
+    collectionIds: ["new-arrivals"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "unisex",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 140,
+    attributes: { style: "Lifestyle", drop: "10mm", terrain: "Casual" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["L.Grey/Power Blue", "White/D.Grey"],
+  },
+  {
+    id: "columbus-freestyle",
+    name: "Columbus Freestyle",
+    slug: "columbus-freestyle",
+    description: "Express your style with Freestyle. Comfortable and trendy.",
+    productType: "Shoe",
+    categoryId: "walking",
+    collectionIds: ["bestsellers"],
+    brandId: "columbus",
+    brandName: "Columbus",
+    gender: "women",
+    basePricePaise: 229900,
+    mrpPaise: 229900,
+    inventoryValue: 65,
+    attributes: { style: "Lifestyle", drop: "10mm", terrain: "Casual" },
+    sizes: ["6", "7", "8", "9", "10"],
+    colors: ["Silver Grey/Pwdr Blu"],
+  },
+  // Supporting Products
+  {
+    id: "shera-performance-socks",
+    name: "Shera Performance Socks",
+    slug: "shera-performance-socks",
+    description:
+      "Cushioned running socks to keep your feet dry and blister-free.",
+    productType: "Accessories",
     categoryId: "accessories",
-    collectionIds: ["new-arrivals"],
+    collectionIds: ["bestsellers"],
+    brandId: "shera",
+    brandName: "Shera",
+    gender: "unisex",
     basePricePaise: 49900,
     mrpPaise: 79900,
-    attributes: { fabric: "Polyester", fit: "Adjustable", gender: "Unisex" },
-    sizes: ["One Size"],
+    inventoryValue: 500,
+    attributes: { material: "Cotton Blend" },
+    sizes: ["S/M", "L/XL"],
     colors: ["Black", "White"],
+  },
+  {
+    id: "shera-gym-bag",
+    name: "Shera Gym Duffle Bag",
+    slug: "shera-gym-duffle-bag",
+    description:
+      "Spacious duffle bag with shoe compartment for your gym essentials.",
+    productType: "Accessories",
+    categoryId: "accessories",
+    collectionIds: ["new-arrivals"],
+    brandId: "shera",
+    brandName: "Shera",
+    gender: "unisex",
+    basePricePaise: 149900,
+    mrpPaise: 199900,
+    inventoryValue: 80,
+    attributes: { capacity: "35L", material: "Polyester" },
+    sizes: ["One Size"],
+    colors: ["Black"],
+  },
+  {
+    id: "shera-steel-bottle",
+    name: "Shera Insulated Steel Bottle",
+    slug: "shera-insulated-steel-bottle",
+    description: "1L insulated bottle keeps water cold for 24 hours.",
+    productType: "Accessories",
+    categoryId: "accessories",
+    collectionIds: ["new-arrivals"],
+    brandId: "shera",
+    brandName: "Shera",
+    gender: "unisex",
+    basePricePaise: 89900,
+    mrpPaise: 129900,
+    inventoryValue: 250,
+    attributes: { capacity: "1L", material: "Stainless Steel" },
+    sizes: ["One Size"],
+    colors: ["Matte Black", "Neon Orange"],
   },
 ];
 
 const banners = [
   {
-    id: "hero-launch",
-    title: "Own Your Grind",
-    subtitle: "New season performance drop is live.",
-    imageUrl: IMG("Shera Hero"),
-    ctaLabel: "Shop now",
-    ctaUrl: "/products",
+    id: "hero-columbus",
+    title: "Own Your Run",
+    subtitle: "Columbus NXG Series is here.",
+    imageUrl: IMG("Columbus Hero"),
+    ctaLabel: "Shop Columbus",
+    ctaUrl: "/brands/columbus",
     placement: "home_hero",
     sortOrder: 1,
     isActive: true,
   },
   {
-    id: "strip-training",
-    title: "Training Essentials",
-    subtitle: "Built to move.",
-    imageUrl: IMG("Training Strip"),
+    id: "strip-carbon",
+    title: "Carbon Racing",
+    subtitle: "Engineered for speed.",
+    imageUrl: IMG("Carbon Racing"),
     ctaLabel: "Explore",
-    ctaUrl: "/collections/training",
+    ctaUrl: "/collections/carbon-racing",
     placement: "home_strip",
     sortOrder: 2,
     isActive: true,
@@ -474,15 +734,15 @@ const homepageSections = [
   {
     id: "hero",
     type: "hero",
-    title: "Own Your Grind",
+    title: "Own Your Run",
     sortOrder: 1,
     isActive: true,
-    config: { bannerId: "hero-launch" },
+    config: { bannerId: "hero-columbus" },
   },
   {
     id: "featured",
     type: "featured_products",
-    title: "Featured",
+    title: "New Arrivals",
     sortOrder: 2,
     isActive: true,
     config: { limit: 4 },
@@ -549,19 +809,6 @@ const customers: SeedCustomer[] = [
         country: "India",
         isDefault: true,
       },
-      {
-        id: "work",
-        label: "Work",
-        fullName: "Arjun Mehta",
-        phone: "+919812345001",
-        line1: "5th Floor, Tech Park",
-        line2: "Hinjewadi Phase 1",
-        city: "Pune",
-        state: "Maharashtra",
-        postalCode: "411057",
-        country: "India",
-        isDefault: false,
-      },
     ],
   },
   {
@@ -606,166 +853,6 @@ const customers: SeedCustomer[] = [
       },
     ],
   },
-  {
-    email: "ananya.iyer@example.com",
-    name: "Ananya Iyer",
-    phone: "+919812345004",
-    marketingOptIn: true,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Ananya Iyer",
-        phone: "+919812345004",
-        line1: "47, 4th Cross, Indiranagar",
-        line2: "100 Ft Road",
-        city: "Bengaluru",
-        state: "Karnataka",
-        postalCode: "560038",
-        country: "India",
-        isDefault: true,
-      },
-      {
-        id: "work",
-        label: "Work",
-        fullName: "Ananya Iyer",
-        phone: "+919812345004",
-        line1: "WeWork Galaxy",
-        line2: "Residency Road",
-        city: "Bengaluru",
-        state: "Karnataka",
-        postalCode: "560025",
-        country: "India",
-        isDefault: false,
-      },
-    ],
-  },
-  {
-    email: "karan.singh@example.com",
-    name: "Karan Singh",
-    phone: "+919812345005",
-    marketingOptIn: false,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Karan Singh",
-        phone: "+919812345005",
-        line1: "House 22, Sector 15",
-        line2: "Near Market",
-        city: "Chandigarh",
-        state: "Chandigarh",
-        postalCode: "160015",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
-  {
-    email: "neha.patel@example.com",
-    name: "Neha Patel",
-    phone: "+919812345006",
-    marketingOptIn: true,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Neha Patel",
-        phone: "+919812345006",
-        line1: "A-9, Satellite Road",
-        line2: "Jodhpur Char Rasta",
-        city: "Ahmedabad",
-        state: "Gujarat",
-        postalCode: "380015",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
-  {
-    email: "vikram.rao@example.com",
-    name: "Vikram Rao",
-    phone: "+919812345007",
-    marketingOptIn: false,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Vikram Rao",
-        phone: "+919812345007",
-        line1: "Flat 304, My Home Jewel",
-        line2: "Madhapur",
-        city: "Hyderabad",
-        state: "Telangana",
-        postalCode: "500081",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
-  {
-    email: "sneha.nair@example.com",
-    name: "Sneha Nair",
-    phone: "+919812345008",
-    marketingOptIn: true,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Sneha Nair",
-        phone: "+919812345008",
-        line1: "Puthiya Road, Kaloor",
-        line2: "Near Metro Station",
-        city: "Kochi",
-        state: "Kerala",
-        postalCode: "682017",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
-  {
-    email: "aditya.kapoor@example.com",
-    name: "Aditya Kapoor",
-    phone: "+919812345009",
-    marketingOptIn: false,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Aditya Kapoor",
-        phone: "+919812345009",
-        line1: "Tower B, DLF Phase 2",
-        line2: "Golf Course Road",
-        city: "Gurugram",
-        state: "Haryana",
-        postalCode: "122002",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
-  {
-    email: "rhea.malhotra@example.com",
-    name: "Rhea Malhotra",
-    phone: "+919812345010",
-    marketingOptIn: true,
-    addresses: [
-      {
-        id: "home",
-        label: "Home",
-        fullName: "Rhea Malhotra",
-        phone: "+919812345010",
-        line1: "C-56, Malviya Nagar",
-        line2: "Near Metro",
-        city: "Jaipur",
-        state: "Rajasthan",
-        postalCode: "302017",
-        country: "India",
-        isDefault: true,
-      },
-    ],
-  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -781,6 +868,7 @@ type VariantInfo = {
   pricePaise: number;
   mrpPaise: number;
   imageUrl: string;
+  inventoryValue: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -794,15 +882,42 @@ async function main() {
   console.log(`   Admin UID: ${adminUid}\n`);
 
   console.log(
-    "🧹 Wiping previous seed data (orders, carts, payments, addresses, wishlists)…",
+    "🧹 Wiping previous seed data (orders, carts, payments, catalog, addresses, wishlists)…",
   );
-  await wipeCollections(["orders", "carts", "payments", "idempotencyKeys"]);
+
+  // Wipe transactional data and catalog data
+  await wipeCollections([
+    "orders",
+    "carts",
+    "payments",
+    "idempotencyKeys",
+    "categories",
+    "collections",
+    "brands",
+    "products",
+  ]);
+
   const allUsers = await db.collection("users").get();
   for (const u of allUsers.docs) {
     await deleteCollectionRecursive(u.ref.collection("addresses"));
     await deleteCollectionRecursive(u.ref.collection("wishlist"));
   }
   console.log("   Done.\n");
+
+  console.log("📂 Seeding brands…");
+  await upsert(
+    "brands",
+    brands.map((b) => ({
+      id: b.id,
+      data: {
+        ...b,
+        logoUrl: IMG(b.name, "FFFFFF", "000000"),
+        description: `${b.name} premium sports gear.`,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    })),
+  );
 
   console.log("📂 Seeding categories…");
   await upsert(
@@ -847,7 +962,6 @@ async function main() {
           ...rest,
           images: [imageUrl, IMG(p.name + " 2")],
           status: "active",
-          brand: "Shera Sports Wear",
           shortDescription: p.description.slice(0, 80),
           seoTitle: p.name,
           seoDescription: p.description,
@@ -858,12 +972,18 @@ async function main() {
       );
 
     const variants = [];
+    // Distribute inventory across variants
+    const stockPerVariant = Math.floor(
+      p.inventoryValue / (sizes.length * colors.length),
+    );
+
     for (const size of sizes) {
       for (const color of colors) {
-        const variantId = `${size}-${color}`.replace(/\s+/g, "-").toLowerCase();
-        const sku = `SHERA-${p.id}-${size}-${color}`
-          .toUpperCase()
-          .replace(/\s+/g, "");
+        // Sanitize variantId to remove slashes and other problematic characters
+        const variantId = safeId(`${size}-${color}`);
+        const sku =
+          `CLB-${safeId(p.id)}-${safeId(size)}-${safeId(color)}`.toUpperCase();
+
         variants.push({
           id: variantId,
           data: {
@@ -872,6 +992,7 @@ async function main() {
             color,
             pricePaise: p.basePricePaise,
             mrpPaise: p.mrpPaise,
+            inventoryValue: stockPerVariant, // Add stock per variant
             status: "active",
             attributes: {},
             images: [],
@@ -889,6 +1010,7 @@ async function main() {
           pricePaise: p.basePricePaise,
           mrpPaise: p.mrpPaise,
           imageUrl,
+          inventoryValue: stockPerVariant,
         });
       }
     }
@@ -1012,25 +1134,16 @@ async function main() {
     return out;
   };
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < Math.min(2, customerRecords.length); i++) {
     cartSpecs.push({
       cartId: `cart_active_${i + 1}`,
       ownerUid: customerRecords[i].uid,
       guestId: null,
       status: "active",
-      items: buildCartItems(randInt(1, 3)),
-    });
-  }
-  for (let i = 0; i < 2; i++) {
-    cartSpecs.push({
-      cartId: `cart_abandoned_${i + 1}`,
-      ownerUid: customerRecords[4 + i].uid,
-      guestId: null,
-      status: "abandoned",
       items: buildCartItems(randInt(1, 2)),
     });
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     cartSpecs.push({
       cartId: `cart_guest_${i + 1}`,
       ownerUid: null,
@@ -1088,7 +1201,7 @@ async function main() {
   const statusWeights = [0.4, 0.2, 0.1, 0.1, 0.1, 0.1];
 
   for (let i = 0; i < ORDER_COUNT; i++) {
-    const orderId = `SHE-${10001 + i}`;
+    const orderId = `CLB-${10001 + i}`;
     const orderNumber = orderId;
     const customer = customerRecords[i % customerRecords.length];
     const status = weightedPick(statuses, statusWeights);
@@ -1136,7 +1249,7 @@ async function main() {
     // Line-item snapshots
     const items: any[] = [];
     const used = new Set<string>();
-    const itemCount = randInt(1, 3);
+    const itemCount = randInt(1, 2);
     while (items.length < itemCount) {
       const v = pick(variantPool);
       if (used.has(v.variantId)) continue;
@@ -1300,8 +1413,8 @@ async function main() {
   console.log("\n✅ Seed complete.\n");
   console.log("Logins:");
   console.log(`  Admin    → ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
-  console.log(`  Customer → arjun.mehta@example.com / ${CUSTOMER_PASSWORD}`);
-  console.log(`  Customer → priya.sharma@example.com / ${CUSTOMER_PASSWORD}`);
+  console.log(`  Customer → ${customers[0].email} / ${CUSTOMER_PASSWORD}`);
+  console.log(`  Customer → ${customers[1].email} / ${CUSTOMER_PASSWORD}`);
   console.log(`  (all seeded customers use password: ${CUSTOMER_PASSWORD})`);
   console.log("\n⚠️  Change the default admin password after first login.\n");
 }

@@ -16,7 +16,6 @@ import {
 import {
   ArrowLeft,
   Boxes,
-  Check,
   Edit3,
   Loader2,
   Plus,
@@ -36,6 +35,7 @@ type Variant = {
   color: string;
   pricePaise: number;
   mrpPaise: number;
+  inventoryValue: number;
   status: string;
 };
 
@@ -65,8 +65,9 @@ export default function VariantsPage() {
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState("");
   const [mrp, setMrp] = useState("");
+  const [inventory, setInventory] = useState("0");
   const [status, setStatus] = useState<"active" | "inactive" | "archived">(
-    "active"
+    "active",
   );
 
   const load = useCallback(async () => {
@@ -78,11 +79,13 @@ export default function VariantsPage() {
         getDocs(
           query(
             collection(db, "products", productId, "variants"),
-            orderBy("createdAt", "desc")
-          )
+            orderBy("createdAt", "desc"),
+          ),
         ),
       ]);
-      setProductName(pSnap.exists() ? pSnap.data().name || productId : productId);
+      setProductName(
+        pSnap.exists() ? pSnap.data().name || productId : productId,
+      );
       setVariants(
         vSnap.docs.map((d) => {
           const v = d.data();
@@ -91,12 +94,13 @@ export default function VariantsPage() {
             sku: v.sku || "",
             size: v.size || "",
             color: v.color || "",
-            pricePaise:
-              typeof v.pricePaise === "number" ? v.pricePaise : 0,
+            pricePaise: typeof v.pricePaise === "number" ? v.pricePaise : 0,
             mrpPaise: typeof v.mrpPaise === "number" ? v.mrpPaise : 0,
+            inventoryValue:
+              typeof v.inventoryValue === "number" ? v.inventoryValue : 0,
             status: v.status || "active",
           };
-        })
+        }),
       );
     } catch (e) {
       toast.error((e as Error)?.message || "Failed to load variants");
@@ -116,6 +120,7 @@ export default function VariantsPage() {
     setSku("");
     setPrice("");
     setMrp("");
+    setInventory("0");
     setStatus("active");
   };
 
@@ -126,7 +131,10 @@ export default function VariantsPage() {
     setSku(v.sku);
     setPrice(toRupees(v.pricePaise));
     setMrp(toRupees(v.mrpPaise));
+    setInventory(v.inventoryValue.toString());
     setStatus(v.status as any);
+    // Scroll to form smoothly
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -149,6 +157,7 @@ export default function VariantsPage() {
         color: color.trim(),
         pricePaise: toPaise(price),
         mrpPaise: toPaise(mrp || price),
+        inventoryValue: parseInt(inventory, 10) || 0,
         status,
         updatedAt: serverTimestamp(),
       };
@@ -156,7 +165,7 @@ export default function VariantsPage() {
       if (editingId) {
         await updateDoc(
           doc(db, "products", productId, "variants", editingId),
-          payload
+          payload,
         );
         toast.success("Variant updated");
       } else {
@@ -180,7 +189,8 @@ export default function VariantsPage() {
 
   const handleDelete = async (v: Variant) => {
     if (!productId) return;
-    if (!confirm(`Delete variant ${v.sku || v.id}?`)) return;
+    if (!confirm(`Are you sure you want to delete variant ${v.sku || v.id}?`))
+      return;
     setBusyId(v.id);
     try {
       await deleteDoc(doc(db, "products", productId, "variants", v.id));
@@ -195,103 +205,136 @@ export default function VariantsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link
-          href="/admin/products"
-          className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-neutral-900">Variants</h1>
-          <p className="text-sm text-neutral-500 truncate">{productName}</p>
+    <div className="max-w-6xl mx-auto space-y-4 pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/products"
+            className="p-1.5 text-neutral-500 hover:bg-neutral-100 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-900">
+              Manage Variants
+            </h1>
+            <p className="text-xs text-neutral-500 truncate max-w-md">
+              {productName}
+            </p>
+          </div>
         </div>
         <Link
           href={`/admin/products/${productId}/edit`}
-          className="text-sm font-medium text-orange-600 hover:underline"
+          className="text-sm font-medium text-orange-600 hover:underline px-2 py-1"
         >
-          ← Edit product
+          ← Back to Product Edit
         </Link>
       </div>
 
       {/* Add / Edit form */}
       <form
         onSubmit={handleSubmit}
-        className="bg-white rounded-xl border border-neutral-200 p-5"
+        className="bg-white border border-neutral-200 p-4 space-y-3"
       >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-neutral-900">
-            {editingId ? "Edit variant" : "Add variant"}
+        <div className="flex items-center justify-between border-b pb-2">
+          <h2 className="font-semibold text-sm text-neutral-900">
+            {editingId ? "Edit Variant" : "Add New Variant"}
           </h2>
           {editingId && (
             <button
               type="button"
               onClick={resetForm}
-              className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800"
+              className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-800"
             >
-              <X className="h-3 w-3" /> Cancel edit
+              <X className="h-3 w-3" /> Cancel Edit
             </button>
           )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <input
-            placeholder="SKU *"
-            value={sku}
-            onChange={(e) => setSku(e.target.value)}
-            className={inputCls}
-            required
-          />
-          <input
-            placeholder="Size"
-            value={size}
-            onChange={(e) => setSize(e.target.value)}
-            className={inputCls}
-          />
-          <input
-            placeholder="Color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            className={inputCls}
-          />
-          <input
-            placeholder="Price ₹ *"
-            type="number"
-            min="0"
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className={inputCls}
-            required
-          />
-          <input
-            placeholder="MRP ₹"
-            type="number"
-            min="0"
-            step="0.01"
-            value={mrp}
-            onChange={(e) => setMrp(e.target.value)}
-            className={inputCls}
-          />
-          <select
-            value={status}
-            onChange={(e) =>
-              setStatus(e.target.value as "active" | "inactive" | "archived")
-            }
-            className={inputCls}
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="archived">Archived</option>
-          </select>
+          <Field label="SKU *" hint="Unique ID">
+            <input
+              placeholder="e.g. CLB-RED-9"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              className={inputCls}
+              required
+            />
+          </Field>
+          <Field label="Size">
+            <input
+              placeholder="e.g. 9"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Color">
+            <input
+              placeholder="e.g. Black/Red"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Price (₹) *">
+            <input
+              placeholder="0"
+              type="number"
+              min="0"
+              step="1"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className={inputCls}
+              required
+            />
+          </Field>
+          <Field label="MRP (₹)">
+            <input
+              placeholder="0"
+              type="number"
+              min="0"
+              step="1"
+              value={mrp}
+              onChange={(e) => setMrp(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Stock Qty">
+            <input
+              placeholder="0"
+              type="number"
+              min="0"
+              value={inventory}
+              onChange={(e) => setInventory(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
         </div>
 
-        <div className="mt-4 flex justify-end">
+        <div className="flex justify-between items-center pt-2">
+          <div className="w-1/3">
+            <Field label="Status">
+              <select
+                value={status}
+                onChange={(e) =>
+                  setStatus(
+                    e.target.value as "active" | "inactive" | "archived",
+                  )
+                }
+                className={inputCls}
+              >
+                <option value="active">Active (Visible)</option>
+                <option value="inactive">Inactive (Hidden)</option>
+                <option value="archived">Archived</option>
+              </select>
+            </Field>
+          </div>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+            className="inline-flex items-center gap-2 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60 mt-5"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -300,18 +343,18 @@ export default function VariantsPage() {
             ) : (
               <Plus className="h-4 w-4" />
             )}
-            {saving ? "Saving…" : editingId ? "Update variant" : "Add variant"}
+            {saving ? "Saving…" : editingId ? "Update Variant" : "Add Variant"}
           </button>
         </div>
       </form>
 
       {/* Variants table */}
-      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
-          <h2 className="font-semibold text-neutral-900">
-            Existing variants
+      <div className="bg-white border border-neutral-200">
+        <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+          <h2 className="font-semibold text-sm text-neutral-900">
+            Existing Variants
           </h2>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs font-medium text-neutral-500 bg-white border border-neutral-200 px-2 py-0.5">
             {variants.length} total
           </span>
         </div>
@@ -327,40 +370,67 @@ export default function VariantsPage() {
               No variants yet
             </p>
             <p className="text-xs text-neutral-500 mt-1">
-              Add the first variant above.
+              Use the form above to add the first variant (size, color, etc.).
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-neutral-600 border-b border-neutral-200">
+              <thead className="bg-white text-neutral-600 border-b border-neutral-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">SKU</th>
-                  <th className="px-4 py-3 text-left font-medium">Size</th>
-                  <th className="px-4 py-3 text-left font-medium">Color</th>
-                  <th className="px-4 py-3 text-right font-medium">Price</th>
-                  <th className="px-4 py-3 text-right font-medium">MRP</th>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  <th className="px-4 py-2 text-left font-medium text-xs">
+                    SKU
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs">
+                    Size
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs">
+                    Color
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs">
+                    Price
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs">
+                    MRP
+                  </th>
+                  <th className="px-4 py-2 text-center font-medium text-xs">
+                    Stock
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs">
+                    Status
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {variants.map((v) => (
-                  <tr key={v.id} className="hover:bg-neutral-50">
-                    <td className="px-4 py-3 font-mono text-xs text-neutral-800">
+                  <tr
+                    key={v.id}
+                    className="hover:bg-neutral-50 transition-colors"
+                  >
+                    <td className="px-4 py-2.5 font-mono text-xs text-neutral-800">
                       {v.sku || v.id}
                     </td>
-                    <td className="px-4 py-3">{v.size || "—"}</td>
-                    <td className="px-4 py-3">{v.color || "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-neutral-900">
+                    <td className="px-4 py-2.5 font-medium">{v.size || "—"}</td>
+                    <td className="px-4 py-2.5">{v.color || "—"}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">
                       {formatINR(v.pricePaise)}
                     </td>
-                    <td className="px-4 py-3 text-right text-neutral-500">
-                      {formatINR(v.mrpPaise)}
+                    <td className="px-4 py-2.5 text-right text-neutral-500 line-through">
+                      {v.mrpPaise > v.pricePaise ? formatINR(v.mrpPaise) : "—"}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5 text-center">
                       <span
-                        className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                        className={`inline-flex px-2 py-0.5 text-xs font-medium border ${v.inventoryValue > 0 ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-red-700 bg-red-50 border-red-200"}`}
+                      >
+                        {v.inventoryValue}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 border ${
                           v.status === "active"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : v.status === "inactive"
@@ -371,12 +441,12 @@ export default function VariantsPage() {
                         {v.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => startEdit(v)}
                           title="Edit"
-                          className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-orange-600"
+                          className="p-1.5 text-neutral-500 hover:bg-neutral-200 hover:text-orange-600 transition-colors"
                         >
                           <Edit3 className="h-4 w-4" />
                         </button>
@@ -384,7 +454,7 @@ export default function VariantsPage() {
                           onClick={() => handleDelete(v)}
                           disabled={busyId === v.id}
                           title="Delete"
-                          className="p-2 rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          className="p-1.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 transition-colors disabled:opacity-50"
                         >
                           {busyId === v.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -406,4 +476,24 @@ export default function VariantsPage() {
 }
 
 const inputCls =
-  "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500";
+  "w-full border border-neutral-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow";
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-neutral-700 mb-1">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="text-[10px] text-neutral-500 mt-1">{hint}</p>}
+    </div>
+  );
+}
