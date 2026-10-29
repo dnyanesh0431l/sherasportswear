@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Anton, Inter } from "next/font/google";
 // import { Toaster } from "sonner";
 import  AppToaster  from "./(storefront)/_components/toaster";
+import SplashScreen from "./(storefront)/_components/splash-screen";
 import "./globals.css";
 
 const inter = Inter({
@@ -56,6 +57,7 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
     >
       <body className="font-sans antialiased bg-white text-neutral-900">
+        <SplashScreen  />
         {children}
         <AppToaster />
       </body>
