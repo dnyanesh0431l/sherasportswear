@@ -1,7 +1,8 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import { Anton, Inter } from "next/font/google";
-import { Toaster } from "sonner";
+// import { Toaster } from "sonner";
+import  AppToaster  from "./(storefront)/_components/toaster";
 import "./globals.css";
 
 const inter = Inter({
@@ -56,7 +57,7 @@ export default function RootLayout({
     >
       <body className="font-sans antialiased bg-white text-neutral-900">
         {children}
-        <Toaster position="top-center" richColors closeButton />
+        <AppToaster />
       </body>
     </html>
   );

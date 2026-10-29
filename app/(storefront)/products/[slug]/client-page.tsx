@@ -673,7 +673,9 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     if (!requireSize()) return;
     addCurrentToCart();
     toast.success("Added to cart", {
+      description: `${quantity} × ${product.name}${selectedSize ? `, size ${selectedSize}` : ""}`,
       action: { label: "View cart", onClick: () => router.push("/cart") },
+      duration: 4500,
     });
   };
 
@@ -1005,41 +1007,45 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 )}
               </div>
 
-              {/* Desktop actions (mobile uses the sticky bar) */}
-              <div className="hidden space-y-2 lg:block">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCartClick}
-                    disabled={soldOut}
-                    className={cx(cartBtnCls, "flex-1")}
-                  >
-                    {cartLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleWishlist}
-                    aria-label={
-                      saved ? "Remove from wishlist" : "Add to wishlist"
-                    }
-                    aria-pressed={saved}
-                    className={wishBtnCls}
-                  >
-                    <Heart
-                      className={cx("h-5 w-5", saved && "fill-red-500")}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                </div>
+              {/* Desktop actions — one row (mobile uses the sticky bar) */}
+              <div className="hidden gap-2 lg:flex">
+                <button
+                  type="button"
+                  onClick={handleCartClick}
+                  disabled={soldOut}
+                  className={cx(
+                    cartBtnCls,
+                    "min-w-0 flex-1 whitespace-nowrap px-3",
+                  )}
+                >
+                  {cartLabel}
+                </button>
                 {!soldOut && (
                   <button
                     type="button"
                     onClick={handleBuyNow}
-                    className={cx(buyBtnCls, "w-full")}
+                    className={cx(
+                      buyBtnCls,
+                      "min-w-0 flex-1 whitespace-nowrap px-3",
+                    )}
                   >
                     Buy now <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={toggleWishlist}
+                  aria-label={
+                    saved ? "Remove from wishlist" : "Add to wishlist"
+                  }
+                  aria-pressed={saved}
+                  className={wishBtnCls}
+                >
+                  <Heart
+                    className={cx("h-5 w-5", saved && "fill-red-500")}
+                    strokeWidth={1.8}
+                  />
+                </button>
               </div>
 
               {/* Assurances */}

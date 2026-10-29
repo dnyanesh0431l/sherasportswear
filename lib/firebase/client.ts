@@ -32,7 +32,7 @@ export const auth = getAuth(app);
 let firestoreInstance: Firestore;
 try {
   firestoreInstance = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: true,
   });
 } catch {
   // Already initialized (HMR, multiple imports, or another module won the race)
