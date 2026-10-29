@@ -1,7 +1,7 @@
 // lib/firebase/client.ts
 import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -20,12 +20,38 @@ if (!firebaseConfig.apiKey) {
   );
 }
 
+// Initialize (or reuse) the Firebase app — safe across HMR / multiple imports
 const app =
   getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
+// Auth
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Firestore
+// - experimentalForceLongPolling: true → bypasses the WebChannel/Listen CORS
+//   issue ("Access-Control-Allow-Origin: * with credentials: include")
+// - useFetchStreams: false → disables the newer fetch-stream transport that
+//   has its own CORS edge cases on some hosts (Vercel, service workers, etc.)
+//
+// NOTE: initializeFirestore throws if Firestore was already initialized for
+// this app (e.g. during Fast Refresh). Guard with try/catch and fall back to
+// getFirestore so repeated imports don't crash the dev server.
+import { Firestore, getFirestore } from "firebase/firestore";
+
+let firestoreInstance: Firestore;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+    useFetchStreams: false,
+  });
+} catch {
+  // Already initialized (HMR, multiple imports, or another module won the race)
+  firestoreInstance = getFirestore(app);
+}
+
+export const db = firestoreInstance;
+
+// Storage
 export const storage = getStorage(app);
 
 export { app };
-// 

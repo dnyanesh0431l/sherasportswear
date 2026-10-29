@@ -32,6 +32,9 @@ import { db } from "../../../../lib/firebase/client";
 import { useCart } from "../../../context/cart-context";
 import { useWishlist } from "../../../context/wishlist-context";
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 type Product = {
   id: string;
   name: string;
@@ -59,12 +62,27 @@ type Related = {
 type CategoryInfo = { name: string; slug: string };
 type CartItem = { id: string; size: string; color: string; quantity: number };
 
-const WRAP = "mx-auto w-full max-w-[1440px] px-4 sm:px-6 lg:px-8";
+// ---------------------------------------------------------------------------
+// Layout system — identical to cart + checkout
+//   page:      pt-6 md:pt-8, max-w 1200, gutters px-4 / sm:px-6 / lg:px-8
+//   gap:       24px (gap-6) between every card / column
+//   card:      rounded-xl bg-white p-4 sm:p-5
+//   in-card:   20px (space-y-5) between blocks
+// ---------------------------------------------------------------------------
+const WRAP = "mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8";
+const CARD = "rounded-xl bg-white p-4 sm:p-5";
 const HIDE_SCROLLBAR =
   "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]";
+// Keyboard-only focus indicator (outline, not a ring/shadow)
 const FOCUS =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2";
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5a1f]";
+
 const MAX_QTY = 10;
+const FREE_SHIPPING_PAISE = 99900;
+const SHIPPING_FEE_PAISE = 4900;
+
+const cx = (...c: (string | false | null | undefined)[]) =>
+  c.filter(Boolean).join(" ");
 
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "One Size"];
 function sizeRank(s: string): number {
@@ -76,7 +94,7 @@ function sizeRank(s: string): number {
 
 const COLOR_MAP: Record<string, string> = {
   black: "#111111",
-  white: "#f7f7f7",
+  white: "#ffffff",
   orange: "#ff5a1f",
   charcoal: "#3a3a3a",
   navy: "#1e2a44",
@@ -93,7 +111,10 @@ function colorHex(name: string): string {
 }
 
 const formatINR = (paise: number) =>
-  `₹${(paise / 100).toLocaleString("en-IN")}`;
+  `₹${(paise / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: paise % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 const discountPercent = (mrp: number, price: number) =>
   mrp <= price ? 0 : Math.round(((mrp - price) / mrp) * 100);
 const prettyKey = (key: string) => {
@@ -101,6 +122,9 @@ const prettyKey = (key: string) => {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 };
 
+// ---------------------------------------------------------------------------
+// Gallery — square images, flat, no borders
+// ---------------------------------------------------------------------------
 function Gallery({ images, name }: { images: string[]; name: string }) {
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
@@ -114,20 +138,25 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
 
   if (!images.length) {
     return (
-      <div className="grid aspect-[4/5] place-items-center rounded-xl bg-neutral-100 text-neutral-400 lg:aspect-[5/6]">
+      <div className="grid aspect-square place-items-center rounded bg-neutral-100 text-neutral-400">
         <Tag className="h-10 w-10" />
       </div>
     );
   }
 
+  const current = Math.min(active, images.length - 1);
+
   return (
     <div className="lg:sticky lg:top-20 lg:self-start">
-      {/* Mobile: swipe strip */}
-      <div className="relative -mx-4 sm:mx-0 lg:hidden">
+      {/* Mobile: swipe strip, kept inside the page gutters */}
+      <div className="relative lg:hidden">
         <div
           ref={trackRef}
           onScroll={onTrackScroll}
-          className={`${HIDE_SCROLLBAR} flex snap-x snap-mandatory overflow-x-auto`}
+          className={cx(
+            HIDE_SCROLLBAR,
+            "flex snap-x snap-mandatory overflow-x-auto rounded",
+          )}
         >
           {images.map((src, i) => (
             <img
@@ -135,44 +164,54 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
               src={src}
               alt={i === 0 ? name : ""}
               loading={i === 0 ? "eager" : "lazy"}
-              className="aspect-[4/5] w-full shrink-0 snap-center bg-neutral-100 object-cover"
+              className="aspect-square w-full shrink-0 snap-center bg-neutral-100 object-cover"
             />
           ))}
         </div>
         {images.length > 1 && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center gap-1.5">
-            {images.map((_, i) => (
-              <span
-                key={i}
-                className={`h-1 rounded-full transition-all ${i === active ? "w-6 bg-neutral-950" : "w-3 bg-neutral-950/30"}`}
-              />
-            ))}
-          </div>
+          <span className="pointer-events-none absolute bottom-3 right-3 rounded bg-white/90 px-2 py-1 text-xs font-bold tabular-nums text-neutral-950">
+            {current + 1} / {images.length}
+          </span>
         )}
       </div>
 
       {/* Desktop: thumbnails + hover zoom */}
       <div className="hidden gap-3 lg:flex">
         {images.length > 1 && (
-          <div
-            className={`${HIDE_SCROLLBAR} flex max-h-[calc(100vh-6rem)] w-14 shrink-0 flex-col gap-2 overflow-y-auto`}
-          >
-            {images.map((src, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setActive(i)}
-                aria-label={`Show image ${i + 1}`}
-                aria-current={active === i}
-                className={`aspect-[5/6] overflow-hidden rounded bg-neutral-100 transition-opacity ${FOCUS} ${active === i ? "ring-1 ring-neutral-950" : "opacity-60 hover:opacity-100"}`}
-              >
-                <img src={src} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
+          <div className="relative w-16 shrink-0">
+            <div
+              className={cx(
+                HIDE_SCROLLBAR,
+                "absolute inset-0 flex flex-col gap-2 overflow-y-auto",
+              )}
+            >
+              {images.map((src, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActive(i)}
+                  aria-label={`Show image ${i + 1}`}
+                  aria-current={current === i}
+                  className={cx(
+                    "aspect-square w-full shrink-0 overflow-hidden rounded bg-neutral-100 transition-opacity",
+                    FOCUS,
+                    current === i
+                      ? "opacity-100"
+                      : "opacity-50 hover:opacity-100",
+                  )}
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div
-          className="relative aspect-[5/6] max-h-[calc(100vh-6rem)] flex-1 cursor-zoom-in overflow-hidden rounded-xl bg-neutral-100"
+          className="relative aspect-square flex-1 cursor-zoom-in overflow-hidden rounded bg-neutral-100"
           onMouseMove={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setZoom({
@@ -183,13 +222,13 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
           onMouseLeave={() => setZoom(null)}
         >
           <img
-            src={images[Math.min(active, images.length - 1)]}
+            src={images[current]}
             alt={name}
             className="h-full w-full object-cover transition-transform duration-300 ease-out"
             style={
               zoom
                 ? {
-                    transform: "scale(1.5)",
+                    transform: "scale(1.6)",
                     transformOrigin: `${zoom.x}% ${zoom.y}%`,
                   }
                 : undefined
@@ -197,6 +236,116 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------
+function FieldTitle({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="mb-2.5 flex items-baseline gap-2">
+      <span className="text-[11px] font-bold uppercase tracking-wide text-neutral-500">
+        {label}
+      </span>
+      {value && (
+        <span className="text-sm font-semibold capitalize text-neutral-950">
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Quantity control
+ *  - 44px touch targets
+ *  - tap +/-, use ↑/↓ keys, or type a number (clamped to the allowed range)
+ *  - select-all on focus so typing replaces the number
+ */
+function QuantityControl({
+  quantity,
+  maxQty,
+  onChange,
+  disabled,
+}: {
+  quantity: number;
+  maxQty: number;
+  onChange: (n: number) => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const clamp = (n: number) => Math.min(maxQty, Math.max(1, n));
+  const commit = (raw: string) => {
+    const n = parseInt(raw, 10);
+    onChange(Number.isFinite(n) ? clamp(n) : quantity);
+    setDraft(null);
+  };
+
+  const btn = cx(
+    "grid h-10 w-10 place-items-center rounded text-neutral-700 transition-colors hover:bg-white hover:text-neutral-950 active:bg-white disabled:opacity-30 disabled:hover:bg-transparent",
+    FOCUS,
+  );
+
+  return (
+    <div
+      role="group"
+      aria-label="Quantity"
+      className={cx(
+        "inline-flex h-11 items-center rounded bg-neutral-100 p-0.5",
+        disabled && "opacity-50",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onChange(clamp(quantity - 1))}
+        disabled={disabled || quantity <= 1}
+        aria-label="Decrease quantity"
+        className={btn}
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        aria-label="Quantity"
+        aria-live="polite"
+        disabled={disabled}
+        value={draft ?? String(quantity)}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) =>
+          setDraft(e.target.value.replace(/\D/g, "").slice(0, 2))
+        }
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit(e.currentTarget.value);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            onChange(clamp(quantity + 1));
+            setDraft(null);
+          } else if (e.key === "ArrowDown") {
+            e.preventDefault();
+            onChange(clamp(quantity - 1));
+            setDraft(null);
+          }
+        }}
+        className="h-10 w-12 bg-transparent text-center text-sm font-bold tabular-nums text-neutral-950 outline-none focus:bg-white"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(clamp(quantity + 1))}
+        disabled={disabled || quantity >= maxQty}
+        aria-label="Increase quantity"
+        className={btn}
+      >
+        <Plus className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -211,9 +360,15 @@ function Disclosure({
   children: React.ReactNode;
 }) {
   return (
-    <details open={defaultOpen} className="group border-b border-neutral-200">
+    <details
+      open={defaultOpen}
+      className="group border-b border-neutral-100 last:border-b-0"
+    >
       <summary
-        className={`flex cursor-pointer list-none items-center justify-between py-3.5 text-sm font-semibold text-neutral-950 [&::-webkit-details-marker]:hidden ${FOCUS}`}
+        className={cx(
+          "flex cursor-pointer list-none items-center justify-between py-4 text-sm font-bold text-neutral-950 [&::-webkit-details-marker]:hidden",
+          FOCUS,
+        )}
       >
         {title}
         <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
@@ -230,15 +385,15 @@ function MiniCard({ p }: { p: Related }) {
   return (
     <Link
       href={`/products/${p.slug}`}
-      className={`group block w-[48%] shrink-0 sm:w-[23%] lg:w-auto ${FOCUS} rounded-lg`}
+      className={cx("group block w-[46%] shrink-0 sm:w-[23%] lg:w-auto", FOCUS)}
     >
-      <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-neutral-100">
+      <div className="aspect-square overflow-hidden rounded bg-neutral-100">
         {p.image ? (
           <img
             src={p.image}
             alt={p.name}
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className="aspect-square h-full w-full object-cover"
           />
         ) : (
           <div className="grid h-full place-items-center text-neutral-400">
@@ -246,17 +401,20 @@ function MiniCard({ p }: { p: Related }) {
           </div>
         )}
       </div>
-      <h3 className="mt-2 line-clamp-1 text-sm font-semibold text-neutral-950 transition-colors">
+      <h3 className="mt-2.5 line-clamp-2 text-sm font-semibold leading-snug text-neutral-950 transition-colors group-hover:text-[#ff5a1f]">
         {p.name}
       </h3>
-      <p className="mt-1 flex items-baseline gap-2">
-        <span className="text-sm font-semibold text-neutral-950">
+      <p className="mt-1 flex flex-wrap items-baseline gap-x-2">
+        <span className="text-sm font-bold tabular-nums text-neutral-950">
           {formatINR(p.basePricePaise)}
         </span>
         {d > 0 && (
-          <span className="text-xs text-neutral-500 line-through">
-            {formatINR(p.mrpPaise)}
-          </span>
+          <>
+            <span className="text-xs tabular-nums text-neutral-400 line-through">
+              {formatINR(p.mrpPaise)}
+            </span>
+            <span className="text-xs font-bold text-[#22c55e]">{d}% off</span>
+          </>
         )}
       </p>
     </Link>
@@ -266,28 +424,29 @@ function MiniCard({ p }: { p: Related }) {
 function PageSkeleton() {
   return (
     <div
-      className="animate-pulse bg-white"
+      className="min-h-screen animate-pulse bg-[#fafafa] pt-6 md:pt-8"
       aria-busy="true"
       aria-label="Loading product"
     >
-      <div className={`${WRAP} py-3`}>
-        <div className="h-3 w-56 rounded bg-neutral-200" />
-      </div>
-      <div
-        className={`${WRAP} grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12`}
-      >
-        <div className="-mx-4 aspect-[4/5] rounded-xl bg-neutral-200 sm:mx-0 lg:aspect-[5/6]" />
-        <div className="space-y-4">
-          <div className="h-3 w-32 rounded bg-neutral-200" />
-          <div className="h-8 w-4/5 rounded bg-neutral-200" />
-          <div className="h-6 w-40 rounded bg-neutral-200" />
-          <div className="h-12 w-full rounded bg-neutral-200" />
+      <div className={WRAP}>
+        <div className="mb-5 h-3 w-56 rounded bg-neutral-200" />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <div className="aspect-square rounded bg-neutral-200" />
+          <div className={cx(CARD, "space-y-5")}>
+            <div className="h-8 w-4/5 rounded bg-neutral-200" />
+            <div className="h-6 w-40 rounded bg-neutral-200" />
+            <div className="h-10 w-full rounded bg-neutral-100" />
+            <div className="h-12 w-full rounded bg-neutral-200" />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 export default function ClientProductPage({ slug }: { slug: string }) {
   const router = useRouter();
   const { addItem: addToCart, items: cartItems } = useCart() as {
@@ -480,18 +639,18 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     : false;
   const soldOut = (product?.stock ?? 0) <= 0;
 
-  const handleCartClick = () => {
-    if (!product || soldOut) return;
-    if (itemInCart) {
-      router.push("/cart");
-      return;
-    }
-    if (product.sizes.length && !selectedSize) {
+  const requireSize = () => {
+    if (product?.sizes.length && !selectedSize) {
       setSizeError(true);
       sizeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      toast.error("Please select a size");
-      return;
+      toast.error("Select a size first");
+      return false;
     }
+    return true;
+  };
+
+  const addCurrentToCart = () => {
+    if (!product) return;
     addToCart({
       id: product.id,
       name: product.name,
@@ -503,30 +662,25 @@ export default function ClientProductPage({ slug }: { slug: string }) {
       color: selectedColor,
       quantity,
     });
-    toast.success("Added to cart");
+  };
+
+  const handleCartClick = () => {
+    if (!product || soldOut) return;
+    if (itemInCart) {
+      router.push("/cart");
+      return;
+    }
+    if (!requireSize()) return;
+    addCurrentToCart();
+    toast.success("Added to cart", {
+      action: { label: "View cart", onClick: () => router.push("/cart") },
+    });
   };
 
   const handleBuyNow = () => {
     if (!product || soldOut) return;
-    if (product.sizes.length && !selectedSize) {
-      setSizeError(true);
-      sizeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      toast.error("Please select a size");
-      return;
-    }
-    if (!itemInCart) {
-      addToCart({
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        price: product.basePricePaise,
-        mrp: product.mrpPaise,
-        image: product.images[0] || "",
-        size: effectiveSize,
-        color: selectedColor,
-        quantity,
-      });
-    }
+    if (!requireSize()) return;
+    if (!itemInCart) addCurrentToCart();
     router.push("/checkout");
   };
 
@@ -554,24 +708,32 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   };
 
   if (loading) return <PageSkeleton />;
+
   if (!product)
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
-        <h1 className="font-display text-2xl font-black uppercase text-neutral-950">
+      <div className="flex min-h-[75vh] flex-col items-center justify-center bg-white px-4 text-center">
+        <div className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-neutral-50">
+          <Tag className="h-9 w-9 text-neutral-400" />
+        </div>
+        <h1 className="font-display text-2xl font-black uppercase italic tracking-tight text-neutral-900 md:text-3xl">
           Product not found
         </h1>
-        <p className="mt-2 max-w-sm text-sm text-neutral-600">
+        <p className="mt-2 max-w-sm text-sm text-neutral-500">
           This item doesn&apos;t exist or is no longer available.
         </p>
         <Link
           href="/products"
-          className={`mt-6 rounded-md bg-neutral-950 px-6 py-3 text-sm font-semibold text-white hover:bg-[#ff5a1f] transition-colors ${FOCUS}`}
+          className={cx(
+            "mt-6 inline-flex items-center gap-2 rounded-md bg-neutral-950 px-8 py-3 text-sm font-bold uppercase tracking-wider text-white transition-colors hover:bg-[#ff5a1f]",
+            FOCUS,
+          )}
         >
-          Browse all products
+          Browse products
         </Link>
       </div>
     );
 
+  // ----- Derived values
   const discount = discountPercent(product.mrpPaise, product.basePricePaise);
   const saved = isInWishlist(product.id);
   const maxQty = Math.max(1, Math.min(product.stock, MAX_QTY));
@@ -584,406 +746,430 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         item.color === selectedColor,
     )?.quantity ?? 0;
   const specs = Object.entries(product.attributes);
+  const sizeMissing = sizeError && !selectedSize;
+  const lineTotal = product.basePricePaise * quantity;
+
+  const qtyHint =
+    quantity >= maxQty
+      ? product.stock > 0 && product.stock < MAX_QTY
+        ? `Only ${product.stock} available`
+        : `Maximum ${MAX_QTY} per order`
+      : null;
+
+  const cartBtnCls = cx(
+    "flex h-12 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors",
+    FOCUS,
+    soldOut
+      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+      : itemInCart
+        ? "bg-neutral-200 text-neutral-950 hover:bg-neutral-300"
+        : "bg-neutral-950 text-white hover:bg-neutral-800",
+  );
+  const buyBtnCls = cx(
+    "flex h-12 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors",
+    FOCUS,
+    "bg-[#ff5a1f] text-white hover:bg-[#e84912]",
+  );
+  const wishBtnCls = cx(
+    "grid h-12 w-12 shrink-0 place-items-center rounded transition-colors",
+    FOCUS,
+    saved
+      ? "bg-red-50 text-red-500"
+      : "bg-neutral-100 text-neutral-600 hover:text-red-500",
+  );
+
+  const cartLabel = soldOut ? (
+    "Sold out"
+  ) : itemInCart ? (
+    <>
+      <Check className="h-4 w-4" strokeWidth={3} />
+      Go to cart
+      {cartQtyForVariant > 1 && (
+        <span className="text-xs font-bold">×{cartQtyForVariant}</span>
+      )}
+    </>
+  ) : (
+    <>
+      <ShoppingBag className="h-4 w-4" />
+      Add to cart
+    </>
+  );
 
   return (
-    <div className="bg-white pb-32 text-neutral-950 lg:pb-16">
-      <nav aria-label="Breadcrumb" className={`${WRAP} py-3`}>
-        <ol className="flex items-center gap-1.5 text-[11px] text-neutral-500">
-          <li>
-            <Link href="/" className="hover:text-neutral-950 transition-colors">
-              Home
-            </Link>
-          </li>
-          {category && (
-            <>
-              <ChevronRight className="h-3 w-3 shrink-0 text-neutral-300" />
-              <li>
-                <Link
-                  href={`/categories/${category.slug}`}
-                  className="hover:text-neutral-950 transition-colors"
-                >
-                  {category.name}
-                </Link>
-              </li>
-            </>
-          )}
-          <ChevronRight className="h-3 w-3 shrink-0 text-neutral-300" />
-          <li
-            className="min-w-0 truncate font-medium text-neutral-950"
-            aria-current="page"
-          >
-            {product.name}
-          </li>
-        </ol>
-      </nav>
-
-      <div
-        className={`${WRAP} grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-12`}
-      >
-        <Gallery images={product.images} name={product.name} />
-
-        <div className="flex min-w-0 flex-col lg:pt-1">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-950">
-              Shera
-            </span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-              Sports Wear
-            </span>
-          </div>
-
-          <h1 className="font-display text-2xl font-black uppercase leading-tight tracking-tight text-neutral-950 sm:text-3xl lg:text-[2rem]">
-            {product.name}
-          </h1>
-
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-2xl font-bold tracking-tight text-neutral-950">
-              {formatINR(product.basePricePaise)}
-            </span>
-            {discount > 0 && (
+    <div className="min-h-screen bg-[#fafafa] pb-28 pt-6 text-neutral-950 md:pt-8 lg:pb-14">
+      <div className={WRAP}>
+        {/* Breadcrumb */}
+        <nav aria-label="Breadcrumb" className="mb-5">
+          <ol className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-neutral-500">
+            <li className="shrink-0">
+              <Link
+                href="/"
+                className="transition-colors hover:text-neutral-950"
+              >
+                Home
+              </Link>
+            </li>
+            {category && (
               <>
-                <span className="text-sm text-neutral-400 line-through">
-                  {formatINR(product.mrpPaise)}
-                </span>
-                <span className="inline-flex items-center rounded bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">
-                  {discount}% OFF
-                </span>
+                <ChevronRight className="h-3 w-3 shrink-0 text-neutral-400" />
+                <li className="shrink-0">
+                  <Link
+                    href={`/categories/${category.slug}`}
+                    className="transition-colors hover:text-neutral-950"
+                  >
+                    {category.name}
+                  </Link>
+                </li>
               </>
             )}
-          </div>
-          <p className="mt-1 text-[11px] text-neutral-500">
-            Inclusive of all taxes · Shipping calculated at checkout
-          </p>
-
-          <div className="mt-6 border-t border-neutral-100 pt-6">
-            {product.colors.length > 0 && (
-              <div className="mb-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-neutral-950">
-                    Colour
-                  </span>
-                  {selectedColor && (
-                    <span className="text-xs text-neutral-500">
-                      {selectedColor}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {product.colors.map((c) => {
-                    const on = selectedColor === c;
-                    const ok = colorHasStock(c);
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => pickColor(c)}
-                        title={ok ? c : `${c} (unavailable)`}
-                        aria-label={`Colour ${c}${ok ? "" : ", unavailable"}`}
-                        aria-pressed={on}
-                        className={`relative h-8 w-8 rounded-full border border-neutral-200 transition-all ${FOCUS} ${on ? "scale-110 border-neutral-950" : "hover:scale-105"} ${ok ? "" : "opacity-30"}`}
-                        style={{ background: colorHex(c) }}
-                      >
-                        {on && (
-                          <Check
-                            className={`absolute inset-0 m-auto h-3.5 w-3.5 ${c.toLowerCase() === "white" || c.toLowerCase() === "grey" || c.toLowerCase() === "gray" ? "text-neutral-950" : "text-white"}`}
-                            strokeWidth={3}
-                          />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {product.sizes.length > 0 && (
-              <div className="mb-5" ref={sizeRef}>
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-neutral-950">
-                    Size{" "}
-                    {selectedSize && (
-                      <span className="ml-1 font-normal text-neutral-500">
-                        · {selectedSize}
-                      </span>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-[11px] font-medium text-neutral-500 underline hover:text-neutral-950"
-                  >
-                    Size guide
-                  </button>
-                </div>
-                {sizeError && !selectedSize && (
-                  <p
-                    className="mb-2 text-[11px] font-medium text-red-600"
-                    role="alert"
-                  >
-                    Please select a size
-                  </p>
-                )}
-                <div
-                  className="grid grid-cols-[repeat(auto-fill,minmax(48px,1fr))] gap-2"
-                  role="group"
-                  aria-label="Size"
-                >
-                  {product.sizes.map((size) => {
-                    const ok = isAvailable(size, selectedColor);
-                    const on = selectedSize === size;
-                    return (
-                      <button
-                        key={size}
-                        type="button"
-                        disabled={!ok}
-                        aria-pressed={on}
-                        onClick={() => {
-                          setSelectedSize(size);
-                          setSizeError(false);
-                        }}
-                        className={`h-10 rounded text-xs font-semibold transition-colors ${FOCUS} ${on ? "bg-neutral-950 text-white" : ok ? "bg-neutral-100 text-neutral-950 hover:bg-neutral-200" : "cursor-not-allowed bg-neutral-50 text-neutral-300 line-through"}`}
-                      >
-                        {size}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {lowStock && (
-              <p className="mb-4 flex items-center gap-1.5 text-[11px] font-medium text-red-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                Only {product.stock} left in stock
-              </p>
-            )}
-
-            {/* DESKTOP BUTTONS */}
-            <div className="hidden items-stretch gap-2 lg:flex">
-              <div className="flex h-12 w-[110px] shrink-0 items-center justify-between rounded bg-neutral-100 px-1">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
-                  aria-label="Decrease quantity"
-                  className={`grid h-8 w-8 place-items-center rounded text-neutral-950 hover:bg-white disabled:text-neutral-300 ${FOCUS}`}
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span
-                  className="text-sm font-semibold tabular-nums"
-                  aria-live="polite"
-                >
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                  disabled={quantity >= maxQty}
-                  aria-label="Increase quantity"
-                  className={`grid h-8 w-8 place-items-center rounded text-neutral-950 hover:bg-white disabled:text-neutral-300 ${FOCUS}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCartClick}
-                disabled={soldOut}
-                className={`flex h-12 flex-1 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors ${FOCUS} ${soldOut ? "cursor-not-allowed bg-neutral-200 text-neutral-500" : itemInCart ? "bg-[#ff5a1f] text-white hover:bg-[#e84912]" : "bg-neutral-950 text-white hover:bg-neutral-800"}`}
-              >
-                {soldOut ? (
-                  "Sold out"
-                ) : itemInCart ? (
-                  <>
-                    <Check className="h-4 w-4" strokeWidth={3} />
-                    Go to cart{" "}
-                    {cartQtyForVariant > 1 && (
-                      <span className="ml-1 rounded-full bg-white/20 px-1.5 text-[10px]">
-                        ×{cartQtyForVariant}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <ShoppingBag className="h-4 w-4" />
-                    Add to cart
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleWishlist}
-                aria-label={saved ? "Remove from wishlist" : "Add to wishlist"}
-                aria-pressed={saved}
-                className={`grid h-12 w-12 shrink-0 place-items-center rounded transition-colors ${FOCUS} ${saved ? "bg-red-50 text-red-500" : "bg-neutral-100 text-neutral-500 hover:text-red-500"}`}
-              >
-                <Heart
-                  className={`h-5 w-5 ${saved ? "fill-red-500" : ""}`}
-                  strokeWidth={1.8}
-                />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleBuyNow}
-              disabled={soldOut}
-              className={`mt-2 hidden w-full items-center justify-center gap-2 rounded bg-white h-11 text-sm font-bold uppercase tracking-wider text-neutral-950 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 lg:flex ${FOCUS}`}
+            <ChevronRight className="h-3 w-3 shrink-0 text-neutral-400" />
+            <li
+              className="min-w-0 truncate font-semibold text-neutral-950"
+              aria-current="page"
             >
-              Buy now <ArrowRight className="h-4 w-4" />
-            </button>
-
-            {/* MOBILE QUANTITY */}
-            <div className="flex items-center justify-between lg:hidden">
-              <span className="text-xs font-semibold text-neutral-950">
-                Qty
-              </span>
-              <div className="flex h-10 w-[110px] items-center justify-between rounded bg-neutral-100 px-1">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
-                  aria-label="Decrease quantity"
-                  className={`grid h-8 w-8 place-items-center rounded text-neutral-950 hover:bg-white disabled:text-neutral-300 ${FOCUS}`}
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <span className="text-sm font-semibold tabular-nums">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
-                  disabled={quantity >= maxQty}
-                  aria-label="Increase quantity"
-                  className={`grid h-8 w-8 place-items-center rounded text-neutral-950 hover:bg-white disabled:text-neutral-300 ${FOCUS}`}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <ul className="mt-5 grid grid-cols-3 divide-x divide-neutral-100 border-y border-neutral-100 py-3">
-              {[
-                { icon: Truck, label: "Fast delivery" },
-                { icon: RotateCcw, label: "7-day returns" },
-                { icon: ShieldCheck, label: "Secure checkout" },
-              ].map(({ icon: Icon, label }) => (
-                <li
-                  key={label}
-                  className="flex flex-col items-center gap-1 px-1 text-center text-[10px] font-medium text-neutral-500"
-                >
-                  <Icon
-                    className="h-4 w-4 text-neutral-950"
-                    strokeWidth={1.5}
-                  />
-                  {label}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="mt-2">
-            <Disclosure title="Product details" defaultOpen>
-              <p className="whitespace-pre-line">{product.description}</p>
-            </Disclosure>
-            {specs.length > 0 && (
-              <Disclosure title="Specifications">
-                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5">
-                  {specs.map(([k, v]) => (
-                    <div key={k} className="contents">
-                      <dt className="text-neutral-500">{prettyKey(k)}</dt>
-                      <dd className="font-medium text-neutral-950">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </Disclosure>
-            )}
-            <Disclosure title="Shipping and returns">
-              <p>
-                Delivery charges and timelines are shown at checkout. Unused
-                items can be returned within 7 days of delivery.
-              </p>
-            </Disclosure>
-          </div>
-        </div>
-      </div>
-
-      {related.length > 0 && (
-        <section
-          className={`${WRAP} mt-10 border-t border-neutral-100 pt-6`}
-          aria-label="Related products"
-        >
-          <div className="mb-4 flex items-end justify-between">
-            <h2 className="font-display text-lg font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-xl">
-              {category ? `More from ${category.name}` : "You may also like"}
-            </h2>
-            {category && (
-              <Link
-                href={`/categories/${category.slug}`}
-                className={`text-xs font-semibold text-neutral-950 hover:text-[#ff5a1f] transition-colors ${FOCUS}`}
-              >
-                View all
-              </Link>
-            )}
-          </div>
-          <div
-            className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3 overflow-x-auto px-4 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-6 lg:gap-3 lg:overflow-visible`}
-          >
-            {related.map((r) => (
-              <MiniCard key={r.id} p={r} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* MOBILE STICKY CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-neutral-100 bg-white px-4 py-2.5 lg:hidden">
-        <div className="flex items-center gap-2.5">
-          <div className="flex-1 min-w-0">
-            <div className="truncate text-[10px] font-medium uppercase tracking-wider text-neutral-500">
               {product.name}
-            </div>
-            <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-base font-bold text-neutral-950 leading-none">
+            </li>
+          </ol>
+        </nav>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <Gallery images={product.images} name={product.name} />
+
+          {/* ---- Buy box ---- */}
+          <div className={cx(CARD, "min-w-0")}>
+            <h1 className="font-display text-2xl font-black uppercase italic leading-tight tracking-tight text-neutral-950 sm:text-3xl">
+              {product.name}
+            </h1>
+
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-3xl font-black tabular-nums tracking-tight text-neutral-950">
                 {formatINR(product.basePricePaise)}
               </span>
               {discount > 0 && (
-                <span className="text-[10px] text-neutral-400 line-through">
-                  {formatINR(product.mrpPaise)}
-                </span>
+                <>
+                  <span className="text-base tabular-nums text-neutral-400 line-through">
+                    {formatINR(product.mrpPaise)}
+                  </span>
+                  <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                    {discount}% off
+                  </span>
+                </>
               )}
             </div>
+            <p className="mt-1.5 text-xs text-neutral-500">
+              Free shipping on orders above {formatINR(FREE_SHIPPING_PAISE)}.
+              Tax is added at checkout.
+            </p>
+
+            <div className="mt-5 space-y-5">
+              {/* Colour */}
+              {product.colors.length > 0 && (
+                <div>
+                  <FieldTitle label="Colour" value={selectedColor} />
+                  <div
+                    className="flex flex-wrap gap-2"
+                    role="group"
+                    aria-label="Colour"
+                  >
+                    {product.colors.map((c) => {
+                      const on = selectedColor === c;
+                      const ok = colorHasStock(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => pickColor(c)}
+                          aria-pressed={on}
+                          aria-label={`${c}${ok ? "" : ", unavailable"}`}
+                          className={cx(
+                            "inline-flex h-10 items-center gap-2 rounded px-3.5 text-sm font-medium capitalize transition-colors",
+                            FOCUS,
+                            on
+                              ? "bg-neutral-950 text-white"
+                              : ok
+                                ? "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                                : "bg-neutral-50 text-neutral-400 line-through",
+                          )}
+                        >
+                          <span
+                            className={cx(
+                              "h-3.5 w-3.5 rounded-sm",
+                              on &&
+                                "outline outline-1 -outline-offset-1 outline-white/40",
+                            )}
+                            style={{ background: colorHex(c) }}
+                          />
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Size */}
+              {product.sizes.length > 0 && (
+                <div ref={sizeRef}>
+                  <FieldTitle label="Size" value={selectedSize} />
+                  {sizeMissing && (
+                    <p
+                      className="mb-2 text-xs font-medium text-red-600"
+                      role="alert"
+                    >
+                      Select a size to continue.
+                    </p>
+                  )}
+                  <div
+                    className={cx(
+                      "grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] gap-2 transition-colors",
+                      sizeMissing && "rounded bg-red-50 p-2",
+                    )}
+                    role="group"
+                    aria-label="Size"
+                  >
+                    {product.sizes.map((size) => {
+                      const ok = isAvailable(size, selectedColor);
+                      const on = selectedSize === size;
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          disabled={!ok}
+                          aria-pressed={on}
+                          aria-label={ok ? size : `${size}, unavailable`}
+                          onClick={() => {
+                            setSelectedSize(size);
+                            setSizeError(false);
+                          }}
+                          className={cx(
+                            "h-11 rounded text-sm font-semibold transition-colors",
+                            FOCUS,
+                            on
+                              ? "bg-neutral-950 text-white"
+                              : ok
+                                ? "bg-neutral-100 text-neutral-950 hover:bg-neutral-200"
+                                : "cursor-not-allowed bg-neutral-50 text-neutral-300 line-through",
+                          )}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Quantity */}
+              <div>
+                <FieldTitle label="Quantity" />
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <QuantityControl
+                    quantity={quantity}
+                    maxQty={maxQty}
+                    onChange={setQuantity}
+                    disabled={soldOut}
+                  />
+                  {!soldOut && quantity > 1 && (
+                    <p className="text-sm text-neutral-600">
+                      {quantity} × {formatINR(product.basePricePaise)} ={" "}
+                      <span className="font-bold tabular-nums text-neutral-950">
+                        {formatINR(lineTotal)}
+                      </span>
+                    </p>
+                  )}
+                </div>
+                {(qtyHint || lowStock || itemInCart) && (
+                  <div className="mt-2 space-y-1 text-xs">
+                    {qtyHint && <p className="text-neutral-500">{qtyHint}</p>}
+                    {lowStock && (
+                      <p className="font-medium text-red-600">
+                        Only {product.stock} left in stock
+                      </p>
+                    )}
+                    {itemInCart && (
+                      <p className="text-neutral-600">
+                        <Check
+                          className="mr-1 inline h-3.5 w-3.5 text-[#22c55e]"
+                          strokeWidth={3}
+                        />
+                        Already in your cart (×{cartQtyForVariant}).{" "}
+                        <Link
+                          href="/cart"
+                          className="font-bold text-neutral-950 underline underline-offset-2 hover:text-[#ff5a1f]"
+                        >
+                          Edit in cart
+                        </Link>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop actions (mobile uses the sticky bar) */}
+              <div className="hidden space-y-2 lg:block">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCartClick}
+                    disabled={soldOut}
+                    className={cx(cartBtnCls, "flex-1")}
+                  >
+                    {cartLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleWishlist}
+                    aria-label={
+                      saved ? "Remove from wishlist" : "Add to wishlist"
+                    }
+                    aria-pressed={saved}
+                    className={wishBtnCls}
+                  >
+                    <Heart
+                      className={cx("h-5 w-5", saved && "fill-red-500")}
+                      strokeWidth={1.8}
+                    />
+                  </button>
+                </div>
+                {!soldOut && (
+                  <button
+                    type="button"
+                    onClick={handleBuyNow}
+                    className={cx(buyBtnCls, "w-full")}
+                  >
+                    Buy now <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Assurances */}
+              <ul className="grid grid-cols-3 gap-2">
+                {[
+                  { icon: Truck, label: "Fast delivery" },
+                  { icon: RotateCcw, label: "7-day returns" },
+                  { icon: ShieldCheck, label: "Secure checkout" },
+                ].map(({ icon: Icon, label }) => (
+                  <li
+                    key={label}
+                    className="flex flex-col items-center gap-1.5 rounded bg-neutral-50 px-2 py-3 text-center text-xs font-medium text-neutral-700"
+                  >
+                    <Icon
+                      className="h-5 w-5 text-neutral-950"
+                      strokeWidth={1.6}
+                    />
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Details */}
+            <div className="mt-5">
+              <Disclosure title="Product details" defaultOpen>
+                <p className="whitespace-pre-line">{product.description}</p>
+              </Disclosure>
+              {specs.length > 0 && (
+                <Disclosure title="Specifications">
+                  <dl className="overflow-hidden rounded">
+                    {specs.map(([k, v], i) => (
+                      <div
+                        key={k}
+                        className={cx(
+                          "flex justify-between gap-6 px-3 py-2.5",
+                          i % 2 === 0 && "bg-neutral-50",
+                        )}
+                      >
+                        <dt className="text-neutral-500">{prettyKey(k)}</dt>
+                        <dd className="text-right font-semibold text-neutral-950">
+                          {v}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </Disclosure>
+              )}
+              <Disclosure title="Shipping and returns">
+                <p>
+                  Shipping is free on orders above{" "}
+                  {formatINR(FREE_SHIPPING_PAISE)}; otherwise it costs{" "}
+                  {formatINR(SHIPPING_FEE_PAISE)}. Tax is added at checkout.
+                  Unused items can be returned within 7 days of delivery.
+                </p>
+              </Disclosure>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleCartClick}
-            disabled={soldOut}
-            className={`flex-[1.5] rounded-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-all ${soldOut ? "bg-neutral-300 cursor-not-allowed" : itemInCart ? "bg-[#ff5a1f]" : "bg-neutral-950"}`}
-          >
-            {soldOut ? (
-              "Sold out"
-            ) : itemInCart ? (
-              <span className="inline-flex items-center justify-center gap-1 w-full">
-                <Check className="h-3.5 w-3.5" strokeWidth={3} /> Go to cart
-              </span>
-            ) : (
-              "Add to cart"
-            )}
-          </button>
+        </div>
+
+        {/* Related */}
+        {related.length > 0 && (
+          <section className="mt-6" aria-label="Related products">
+            <div className={CARD}>
+              <div className="mb-4 flex items-end justify-between">
+                <h2 className="font-display text-lg font-black uppercase italic leading-none tracking-tight text-neutral-950 sm:text-xl">
+                  {category
+                    ? `More from ${category.name}`
+                    : "You may also like"}
+                </h2>
+                {category && (
+                  <Link
+                    href={`/categories/${category.slug}`}
+                    className={cx(
+                      "inline-flex items-center gap-1 text-xs font-bold text-neutral-950 transition-colors hover:text-[#ff5a1f]",
+                      FOCUS,
+                    )}
+                  >
+                    View all <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+              </div>
+              {/* Scroll edge-to-edge inside the card, aligned to its padding */}
+              <div
+                className={cx(
+                  HIDE_SCROLLBAR,
+                  "-mx-4 flex gap-3 overflow-x-auto px-4 sm:-mx-5 sm:px-5 lg:mx-0 lg:grid lg:grid-cols-6 lg:overflow-visible lg:px-0",
+                )}
+              >
+                {related.map((r) => (
+                  <MiniCard key={r.id} p={r} />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* Mobile sticky actions */}
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-white pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 lg:hidden">
+        <div className="mx-auto flex max-w-[1200px] items-stretch gap-2 px-4 sm:px-6">
           <button
             type="button"
             onClick={toggleWishlist}
             aria-label={saved ? "Remove from wishlist" : "Add to wishlist"}
-            className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition-all ${saved ? "bg-red-50 text-red-500" : "bg-neutral-100 text-neutral-500"}`}
+            aria-pressed={saved}
+            className={wishBtnCls}
           >
             <Heart
-              className={`h-4 w-4 ${saved ? "fill-red-500" : ""}`}
-              strokeWidth={2}
+              className={cx("h-5 w-5", saved && "fill-red-500")}
+              strokeWidth={1.8}
             />
           </button>
+          <button
+            type="button"
+            onClick={handleCartClick}
+            disabled={soldOut}
+            className={cx(cartBtnCls, "flex-1 px-3")}
+          >
+            {cartLabel}
+          </button>
+          {!soldOut && (
+            <button
+              type="button"
+              onClick={handleBuyNow}
+              className={cx(buyBtnCls, "flex-1 px-3")}
+            >
+              Buy now
+            </button>
+          )}
         </div>
       </div>
     </div>
