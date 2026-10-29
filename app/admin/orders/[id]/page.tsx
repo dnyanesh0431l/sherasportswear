@@ -26,7 +26,6 @@ import {
   Save,
   Trash2,
   Truck,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -112,11 +111,7 @@ const PAYMENT_STATUSES = [
   "cancelled",
 ] as const;
 
-const FULFILLMENT_STATUSES = [
-  "unfulfilled",
-  "partial",
-  "fulfilled",
-] as const;
+const FULFILLMENT_STATUSES = ["unfulfilled", "partial", "fulfilled"] as const;
 
 const SHIPMENT_STATUSES = [
   "pending",
@@ -134,9 +129,7 @@ function toDate(v: any): Date | null {
 }
 
 const formatINR = (paise: number | undefined | null) =>
-  typeof paise === "number"
-    ? `₹${(paise / 100).toLocaleString("en-IN")}`
-    : "—";
+  typeof paise === "number" ? `₹${(paise / 100).toLocaleString("en-IN")}` : "—";
 
 function Pill({ value }: { value: string | null }) {
   const s = (value || "unknown").toLowerCase();
@@ -152,7 +145,7 @@ function Pill({ value }: { value: string | null }) {
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
-      className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${cls}`}
+      className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
       {value || "—"}
     </span>
@@ -160,7 +153,7 @@ function Pill({ value }: { value: string | null }) {
 }
 
 const inputCls =
-  "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500";
+  "w-full border border-neutral-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow";
 
 // ---------------------------------------------------------------------------
 // Page
@@ -185,12 +178,11 @@ export default function OrderDetailPage() {
   const [newCarrier, setNewCarrier] = useState("");
   const [newTracking, setNewTracking] = useState("");
   const [newTrackingUrl, setNewTrackingUrl] = useState("");
-  const [newShipStatus, setNewShipStatus] = useState<
-    (typeof SHIPMENT_STATUSES)[number]
-  >("pending");
+  const [newShipStatus, setNewShipStatus] =
+    useState<(typeof SHIPMENT_STATUSES)[number]>("pending");
   const [addingShipment, setAddingShipment] = useState(false);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(
-    null
+    null,
   );
 
   const load = useCallback(async () => {
@@ -244,8 +236,8 @@ export default function OrderDetailPage() {
       const snap = await getDocs(
         query(
           collection(db, "orders", id, "shipments"),
-          orderBy("createdAt", "desc")
-        )
+          orderBy("createdAt", "desc"),
+        ),
       );
       setShipments(
         snap.docs.map((d) => {
@@ -259,7 +251,7 @@ export default function OrderDetailPage() {
             shippedAt: toDate(s.shippedAt),
             deliveredAt: toDate(s.deliveredAt),
           };
-        })
+        }),
       );
     } catch (e) {
       toast.error((e as Error)?.message || "Failed to load shipments");
@@ -283,7 +275,7 @@ export default function OrderDetailPage() {
         fulfillmentStatus,
         updatedAt: serverTimestamp(),
       });
-      toast.success("Order updated");
+      toast.success("Order status updated");
     } catch (e) {
       toast.error((e as Error)?.message || "Update failed");
     } finally {
@@ -320,7 +312,10 @@ export default function OrderDetailPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      if (newShipStatus === "in_transit" || newShipStatus === "out_for_delivery") {
+      if (
+        newShipStatus === "in_transit" ||
+        newShipStatus === "out_for_delivery"
+      ) {
         payload.shippedAt = serverTimestamp();
       }
       if (newShipStatus === "delivered") {
@@ -329,7 +324,6 @@ export default function OrderDetailPage() {
       }
       await addDoc(collection(db, "orders", id, "shipments"), payload);
 
-      // Optionally auto-advance order status
       if (
         order &&
         (order.status === "pending" ||
@@ -339,11 +333,14 @@ export default function OrderDetailPage() {
       ) {
         await updateDoc(doc(db, "orders", id), {
           status: "shipped",
-          fulfillmentStatus: newShipStatus === "delivered" ? "fulfilled" : "partial",
+          fulfillmentStatus:
+            newShipStatus === "delivered" ? "fulfilled" : "partial",
           updatedAt: serverTimestamp(),
         });
         setStatus("shipped");
-        setFulfillmentStatus(newShipStatus === "delivered" ? "fulfilled" : "partial");
+        setFulfillmentStatus(
+          newShipStatus === "delivered" ? "fulfilled" : "partial",
+        );
       }
 
       toast.success("Shipment added");
@@ -361,7 +358,12 @@ export default function OrderDetailPage() {
 
   const deleteShipment = async (s: Shipment) => {
     if (!id) return;
-    if (!confirm(`Delete shipment ${s.trackingNumber || s.id}?`)) return;
+    if (
+      !confirm(
+        `Are you sure you want to delete shipment ${s.trackingNumber || s.id}?`,
+      )
+    )
+      return;
     setDeletingShipmentId(s.id);
     try {
       await deleteDoc(doc(db, "orders", id, "shipments", s.id));
@@ -374,10 +376,6 @@ export default function OrderDetailPage() {
     }
   };
 
-  // -------------------------------------------------------------------------
-  // Render states
-  // -------------------------------------------------------------------------
-
   if (loading) {
     return (
       <div className="p-10 text-center">
@@ -388,7 +386,7 @@ export default function OrderDetailPage() {
 
   if (notFound || !order) {
     return (
-      <div className="bg-white rounded-xl border border-neutral-200 p-10 text-center">
+      <div className="bg-white border border-neutral-200 p-10 text-center max-w-lg mx-auto mt-10">
         <AlertCircle className="h-10 w-10 text-neutral-300 mx-auto" />
         <p className="mt-3 text-sm font-medium text-neutral-700">
           Order not found.
@@ -409,30 +407,32 @@ export default function OrderDetailPage() {
     fulfillmentStatus !== (order.fulfillmentStatus || "");
 
   return (
-    <div className="space-y-6">
-      {/* Header ---------------------------------------------------------- */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link
-          href="/admin/orders"
-          className="p-2 rounded-md text-neutral-500 hover:bg-neutral-100"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-neutral-900 font-mono">
-            {order.orderNumber || order.id.slice(0, 12)}
-          </h1>
-          <p className="text-sm text-neutral-500">
-            {order.createdAt
-              ? order.createdAt.toLocaleString("en-IN", {
-                  day: "2-digit",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "—"}
-          </p>
+    <div className="max-w-7xl mx-auto space-y-4 pb-12">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/orders"
+            className="p-1.5 text-neutral-500 hover:bg-neutral-100 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-neutral-900 font-mono">
+              {order.orderNumber || order.id.slice(0, 12)}
+            </h1>
+            <p className="text-xs text-neutral-500">
+              {order.createdAt
+                ? order.createdAt.toLocaleString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Pill value={order.status} />
@@ -440,17 +440,20 @@ export default function OrderDetailPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* LEFT: Items + totals ---------------------------------------- */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
-              <h2 className="font-semibold text-neutral-900">Items</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* LEFT: Items + totals + addresses */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white border border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
+              <h2 className="font-semibold text-sm text-neutral-900">
+                Order Items
+              </h2>
               <span className="text-xs text-neutral-500">
                 {order.items.length} line item
                 {order.items.length === 1 ? "" : "s"}
               </span>
             </div>
+
             {order.items.length === 0 ? (
               <div className="p-10 text-center">
                 <Package className="h-10 w-10 text-neutral-300 mx-auto" />
@@ -461,37 +464,34 @@ export default function OrderDetailPage() {
             ) : (
               <ul className="divide-y divide-neutral-100">
                 {order.items.map((item, idx) => (
-                  <li key={idx} className="p-4 flex items-center gap-4">
+                  <li key={idx} className="p-3 flex items-center gap-3">
                     {item.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={item.imageUrl}
                         alt=""
-                        className="h-14 w-14 rounded-lg object-cover bg-neutral-100 shrink-0"
+                        className="h-12 w-12 object-cover bg-neutral-100 border border-neutral-200 shrink-0"
                       />
                     ) : (
-                      <div className="h-14 w-14 rounded-lg bg-neutral-100 shrink-0" />
+                      <div className="h-12 w-12 bg-neutral-100 border border-neutral-200 shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-neutral-900 truncate">
                         {item.name || "(unnamed)"}
                       </div>
-                      <div className="text-xs text-neutral-500 truncate">
-                        {item.sku && <span className="font-mono">{item.sku}</span>}
+                      <div className="text-[11px] text-neutral-500 truncate">
+                        {item.sku && (
+                          <span className="font-mono">{item.sku}</span>
+                        )}
                         {item.size && <> · Size {item.size}</>}
                         {item.color && <> · {item.color}</>}
                       </div>
-                      {item.variantId && (
-                        <div className="text-[11px] text-neutral-400 truncate">
-                          variant: {item.variantId}
-                        </div>
-                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-semibold text-neutral-900">
                         {formatINR(item.lineTotalPaise)}
                       </div>
-                      <div className="text-xs text-neutral-500">
+                      <div className="text-[11px] text-neutral-500">
                         {formatINR(item.unitPricePaise)} × {item.quantity ?? 1}
                       </div>
                     </div>
@@ -502,9 +502,11 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Totals */}
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-4">Totals</h2>
-            <dl className="space-y-2 text-sm">
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
+              Order Totals
+            </h2>
+            <dl className="space-y-1.5 text-sm">
               <Row label="Subtotal" value={formatINR(order.subtotalPaise)} />
               {order.discountPaise > 0 && (
                 <Row
@@ -516,35 +518,27 @@ export default function OrderDetailPage() {
               <Row label="Shipping" value={formatINR(order.shippingPaise)} />
               <Row label="Tax" value={formatINR(order.taxPaise)} />
               <div className="border-t border-neutral-200 pt-2 mt-2">
-                <Row
-                  label="Total"
-                  value={formatINR(order.totalPaise)}
-                  bold
-                />
+                <Row label="Total" value={formatINR(order.totalPaise)} bold />
               </div>
             </dl>
-            <p className="text-[11px] text-neutral-400 mt-3">
-              Amounts are immutable order snapshots — recalculated at checkout,
-              stored server-side. Editing here is intentionally disabled.
-            </p>
           </div>
 
           {/* Addresses */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-neutral-200 p-5">
-              <div className="flex items-center gap-2 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white border border-neutral-200 p-4">
+              <div className="flex items-center gap-2 border-b pb-2 mb-2">
                 <MapPin className="h-4 w-4 text-orange-500" />
-                <h3 className="font-semibold text-neutral-900">
-                  Shipping address
+                <h3 className="font-semibold text-sm text-neutral-900">
+                  Shipping Address
                 </h3>
               </div>
               <AddressBlock address={order.shippingAddress} />
             </div>
-            <div className="bg-white rounded-xl border border-neutral-200 p-5">
-              <div className="flex items-center gap-2 mb-3">
+            <div className="bg-white border border-neutral-200 p-4">
+              <div className="flex items-center gap-2 border-b pb-2 mb-2">
                 <MapPin className="h-4 w-4 text-orange-500" />
-                <h3 className="font-semibold text-neutral-900">
-                  Billing address
+                <h3 className="font-semibold text-sm text-neutral-900">
+                  Billing Address
                 </h3>
               </div>
               <AddressBlock address={order.billingAddress} />
@@ -552,19 +546,15 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        {/* RIGHT: Status, payment, shipments --------------------------- */}
-        <div className="space-y-6">
+        {/* RIGHT: Status, Customer, Payment, Shipments */}
+        <div className="space-y-4">
           {/* Status controls */}
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-4">
-              Status controls
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
+              Status Controls
             </h2>
-
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-                  Order status
-                </label>
+              <Field label="Order Status">
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
@@ -572,16 +562,12 @@ export default function OrderDetailPage() {
                 >
                   {ORDER_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-                  Payment status
-                </label>
+              </Field>
+              <Field label="Payment Status">
                 <select
                   value={paymentStatus}
                   onChange={(e) => setPaymentStatus(e.target.value)}
@@ -589,20 +575,12 @@ export default function OrderDetailPage() {
                 >
                   {PAYMENT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-neutral-500 mt-1">
-                  Don't mark online payments as captured unless the provider
-                  confirms it via webhook.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-neutral-600 mb-1.5">
-                  Fulfillment status
-                </label>
+              </Field>
+              <Field label="Fulfillment Status">
                 <select
                   value={fulfillmentStatus}
                   onChange={(e) => setFulfillmentStatus(e.target.value)}
@@ -610,32 +588,33 @@ export default function OrderDetailPage() {
                 >
                   {FULFILLMENT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {s.charAt(0).toUpperCase() + s.slice(1)}
                     </option>
                   ))}
                 </select>
-              </div>
+              </Field>
             </div>
-
-            <div className="mt-4 flex justify-end">
+            <div className="mt-3 flex justify-end">
               <button
                 onClick={saveMeta}
                 disabled={savingMeta || !metaDirty}
-                className="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                className="inline-flex items-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
               >
                 {savingMeta ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4" />
                 )}
-                {savingMeta ? "Saving…" : "Save changes"}
+                {savingMeta ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
 
           {/* Customer info */}
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <h2 className="font-semibold text-neutral-900 mb-3">Customer</h2>
+          <div className="bg-white border border-neutral-200 p-4">
+            <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
+              Customer
+            </h2>
             <dl className="space-y-2 text-sm">
               <Row label="Email" value={order.email || "—"} />
               <Row label="Phone" value={order.phone || "—"} />
@@ -658,10 +637,12 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Payment info */}
-          <div className="bg-white rounded-xl border border-neutral-200 p-5">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="bg-white border border-neutral-200 p-4">
+            <div className="flex items-center gap-2 border-b pb-2 mb-3">
               <CreditCard className="h-4 w-4 text-orange-500" />
-              <h2 className="font-semibold text-neutral-900">Payment</h2>
+              <h2 className="font-semibold text-sm text-neutral-900">
+                Payment Info
+              </h2>
             </div>
             <dl className="space-y-2 text-sm">
               <Row
@@ -684,19 +665,20 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Shipments */}
-          <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-neutral-200 flex items-center justify-between">
+          <div className="bg-white border border-neutral-200">
+            <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
               <div className="flex items-center gap-2">
                 <Truck className="h-4 w-4 text-orange-500" />
-                <h2 className="font-semibold text-neutral-900">Shipments</h2>
+                <h2 className="font-semibold text-sm text-neutral-900">
+                  Shipments
+                </h2>
               </div>
               <span className="text-xs text-neutral-500">
                 {shipments.length}
               </span>
             </div>
 
-            {/* Existing */}
-            <div className="p-4 space-y-3">
+            <div className="p-3 space-y-2">
               {shipLoading ? (
                 <div className="text-center py-3">
                   <Loader2 className="h-4 w-4 animate-spin text-orange-500 mx-auto" />
@@ -709,7 +691,7 @@ export default function OrderDetailPage() {
                 shipments.map((s) => (
                   <div
                     key={s.id}
-                    className="rounded-lg border border-neutral-200 p-3 text-sm"
+                    className="border border-neutral-200 p-2.5 text-sm"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -733,7 +715,7 @@ export default function OrderDetailPage() {
                       <button
                         onClick={() => deleteShipment(s)}
                         disabled={deletingShipmentId === s.id}
-                        className="p-1.5 rounded-md text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                         title="Delete shipment"
                       >
                         {deletingShipmentId === s.id ? (
@@ -746,7 +728,7 @@ export default function OrderDetailPage() {
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <Pill value={s.status} />
                       {s.shippedAt && (
-                        <span className="text-[11px] text-neutral-500">
+                        <span className="text-[10px] text-neutral-500">
                           Shipped{" "}
                           {s.shippedAt.toLocaleDateString("en-IN", {
                             day: "2-digit",
@@ -755,7 +737,7 @@ export default function OrderDetailPage() {
                         </span>
                       )}
                       {s.deliveredAt && (
-                        <span className="text-[11px] text-emerald-600 inline-flex items-center gap-1">
+                        <span className="text-[10px] text-emerald-600 inline-flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" />
                           Delivered{" "}
                           {s.deliveredAt.toLocaleDateString("en-IN", {
@@ -770,16 +752,15 @@ export default function OrderDetailPage() {
               )}
             </div>
 
-            {/* Add shipment */}
             <form
               onSubmit={addShipment}
-              className="border-t border-neutral-200 p-4 space-y-2 bg-neutral-50"
+              className="border-t border-neutral-200 p-3 space-y-2 bg-neutral-50"
             >
-              <div className="text-xs font-medium uppercase tracking-wide text-neutral-600">
-                Add shipment
+              <div className="text-xs font-medium text-neutral-600 uppercase tracking-wider mb-1">
+                Add Shipment
               </div>
               <input
-                placeholder="Carrier (e.g. Delhivery)"
+                placeholder="Carrier (e.g., Delhivery)"
                 value={newCarrier}
                 onChange={(e) => setNewCarrier(e.target.value)}
                 className={inputCls}
@@ -791,37 +772,33 @@ export default function OrderDetailPage() {
                 className={inputCls}
               />
               <input
-                placeholder="Tracking URL (optional, https://…)"
+                placeholder="Tracking URL (optional)"
                 value={newTrackingUrl}
                 onChange={(e) => setNewTrackingUrl(e.target.value)}
                 className={inputCls}
               />
               <select
                 value={newShipStatus}
-                onChange={(e) =>
-                  setNewShipStatus(
-                    e.target.value as (typeof SHIPMENT_STATUSES)[number]
-                  )
-                }
+                onChange={(e) => setNewShipStatus(e.target.value as any)}
                 className={inputCls}
               >
                 {SHIPMENT_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {s.replace("_", " ")}
                   </option>
                 ))}
               </select>
               <button
                 type="submit"
                 disabled={addingShipment}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                className="w-full inline-flex items-center justify-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
               >
                 {addingShipment ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Plus className="h-4 w-4" />
                 )}
-                {addingShipment ? "Adding…" : "Add shipment"}
+                {addingShipment ? "Adding…" : "Add Shipment"}
               </button>
             </form>
           </div>
@@ -832,7 +809,7 @@ export default function OrderDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Small helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
 function Row({
@@ -878,10 +855,30 @@ function AddressBlock({ address }: { address: Address | null }) {
     address.phone && `Phone: ${address.phone}`,
   ].filter(Boolean);
   return (
-    <address className="not-italic text-sm text-neutral-700 leading-relaxed">
+    <address className="not-italic text-sm text-neutral-700 leading-relaxed space-y-0.5">
       {lines.map((l, i) => (
         <div key={i}>{l}</div>
       ))}
     </address>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-neutral-700 mb-1">
+        {label}
+      </label>
+      {children}
+      {hint && <p className="text-[10px] text-neutral-500 mt-1">{hint}</p>}
+    </div>
   );
 }

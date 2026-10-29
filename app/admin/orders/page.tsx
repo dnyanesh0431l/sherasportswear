@@ -66,7 +66,7 @@ function StatusPill({ value }: { value: string | null }) {
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
-      className={`inline-flex text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${cls}`}
+      className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
       {value || "—"}
     </span>
@@ -86,7 +86,7 @@ export default function OrdersListPage() {
     setError(null);
     try {
       const snap = await getDocs(
-        query(collection(db, "orders"), orderBy("createdAt", "desc"))
+        query(collection(db, "orders"), orderBy("createdAt", "desc")),
       );
       setItems(
         snap.docs.map((d) => {
@@ -104,13 +104,13 @@ export default function OrdersListPage() {
             itemCount: Array.isArray(data.items) ? data.items.length : 0,
             createdAt: toDate(data.createdAt),
           };
-        })
+        }),
       );
     } catch (e) {
       setError(
         (e as Error)?.message?.includes("permission-denied")
           ? "Permission denied. Check Firestore rules for admin reads on `orders`."
-          : (e as Error)?.message || "Failed to load orders"
+          : (e as Error)?.message || "Failed to load orders",
       );
     } finally {
       setLoading(false);
@@ -138,59 +138,63 @@ export default function OrdersListPage() {
   }, [items, search, statusFilter, paymentFilter]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="max-w-7xl mx-auto space-y-4 pb-12">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Orders</h1>
-          <p className="text-sm text-neutral-500 mt-1">
+          <h1 className="text-xl font-bold text-neutral-900">Orders</h1>
+          <p className="text-xs text-neutral-500 mt-0.5">
             {items.length} total · {filtered.length} shown
           </p>
         </div>
         <button
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-60"
+          className="inline-flex items-center gap-2 border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+          />
           Refresh
         </button>
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-2 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-neutral-200 p-4 flex flex-wrap items-center gap-3">
+      {/* Toolbar */}
+      <div className="bg-white border border-neutral-200 p-3 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by order #, email, phone…"
-            className="w-full pl-9 pr-3 py-2 rounded-md border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="Search by order #, email, phone..."
+            className="w-full pl-8 pr-3 py-1.5 border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm bg-white"
+          className="border border-neutral-300 px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="all">All order statuses</option>
+          <option value="all">All Statuses</option>
           {ORDER_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {s.charAt(0).toUpperCase() + s.slice(1)}
             </option>
           ))}
         </select>
         <select
           value={paymentFilter}
           onChange={(e) => setPaymentFilter(e.target.value)}
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm bg-white"
+          className="border border-neutral-300 px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
         >
-          <option value="all">All payments</option>
+          <option value="all">All Payments</option>
           <option value="pending">Pending</option>
           <option value="authorized">Authorized</option>
           <option value="captured">Captured</option>
@@ -199,7 +203,8 @@ export default function OrdersListPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+      {/* Table */}
+      <div className="bg-white border border-neutral-200 overflow-hidden">
         {loading ? (
           <div className="p-10 text-center">
             <Loader2 className="h-6 w-6 animate-spin text-orange-500 mx-auto" />
@@ -221,33 +226,52 @@ export default function OrdersListPage() {
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-neutral-600 border-b border-neutral-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Order</th>
-                  <th className="px-4 py-3 text-left font-medium">Customer</th>
-                  <th className="px-4 py-3 text-left font-medium">Date</th>
-                  <th className="px-4 py-3 text-right font-medium">Items</th>
-                  <th className="px-4 py-3 text-right font-medium">Total</th>
-                  <th className="px-4 py-3 text-left font-medium">Order</th>
-                  <th className="px-4 py-3 text-left font-medium">Payment</th>
-                  <th className="px-4 py-3 text-right font-medium"></th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Order #
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Customer
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-4 py-2 text-center font-medium text-xs uppercase tracking-wider">
+                    Items
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs uppercase tracking-wider">
+                    Total
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-2 text-left font-medium text-xs uppercase tracking-wider">
+                    Payment
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium text-xs uppercase tracking-wider"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filtered.map((o) => (
-                  <tr key={o.id} className="hover:bg-neutral-50">
-                    <td className="px-4 py-3">
+                  <tr
+                    key={o.id}
+                    className="hover:bg-neutral-50 transition-colors"
+                  >
+                    <td className="px-4 py-2.5">
                       <div className="font-mono text-xs font-semibold text-neutral-900">
                         {o.orderNumber || o.id.slice(0, 10)}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="text-sm text-neutral-900 truncate max-w-[200px]">
                         {o.email || "guest"}
                       </div>
                       {o.phone && (
-                        <div className="text-xs text-neutral-500">{o.phone}</div>
+                        <div className="text-[11px] text-neutral-500">
+                          {o.phone}
+                        </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-neutral-600 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">
                       {o.createdAt
                         ? o.createdAt.toLocaleDateString("en-IN", {
                             day: "2-digit",
@@ -256,25 +280,25 @@ export default function OrdersListPage() {
                           })
                         : "—"}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex items-center gap-1 text-xs text-neutral-700 bg-neutral-100 rounded px-2 py-0.5">
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="inline-flex items-center gap-1 text-xs text-neutral-700 bg-neutral-100 border border-neutral-200 px-1.5 py-0.5">
                         <Package className="h-3 w-3" />
                         {o.itemCount}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-neutral-900 whitespace-nowrap">
+                    <td className="px-4 py-2.5 text-right font-semibold text-neutral-900 whitespace-nowrap">
                       {formatINR(o.totalPaise)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <StatusPill value={o.status} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <StatusPill value={o.paymentStatus} />
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-2.5 text-right">
                       <Link
                         href={`/admin/orders/${o.id}`}
-                        className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:text-orange-700"
+                        className="inline-flex items-center gap-0.5 text-xs font-medium text-orange-600 hover:text-orange-700 hover:underline px-2 py-1"
                       >
                         View <ChevronRight className="h-3 w-3" />
                       </Link>
