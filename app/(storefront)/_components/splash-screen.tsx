@@ -14,18 +14,18 @@ import { useEffect, useRef, useState } from "react";
  * height) that scales with the viewport, so the pair always fits from a
  * 320px phone to a 4K desktop, portrait or landscape.
  *
- * Timeline (SHOW_MS = 2.4s, then a 0.45s fade-out)
+ * Timeline (SHOW_MS = 3s, then a 0.45s fade-out)
  *   0.00s  runner slides in from the left edge into place (+ orange speed lines)
  *   0.60s  "SHERA" wipes in to the right of the runner
  *   1.10s  "SPORTS WEAR" fades in while its letter-spacing widens
- *   0.00s  orange progress bar fills along the bottom until exit
+ *   0.00s  orange progress bar fills along the bottom until exit (3s)
  *
  * Waits for the runner image before starting. Respects prefers-reduced-motion.
  * Image: public/images/shera-runner.png
  */
 
-const SHOW_MS = 2400;
-const SHOW_MS_REDUCED = 1200;
+const SHOW_MS = 3000;
+const SHOW_MS_REDUCED = 1500;
 const EXIT_MS = 450;
 const IMAGE_TIMEOUT_MS = 1500;
 
