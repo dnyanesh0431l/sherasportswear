@@ -1,7 +1,7 @@
 // app/login/page.tsx
 "use client";
 
-import { auth } from "@/lib/firebase/client";
+import { auth, db } from "@/lib/firebase/client";
 import {
   browserLocalPersistence,
   browserSessionPersistence,
@@ -12,6 +12,7 @@ import {
   signInWithPopup,
   type User,
 } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import {
   AlertCircle,
   ArrowRight,
@@ -69,17 +70,14 @@ function getSafeNext(raw: string | null): string | null {
   return null;
 }
 
-/**
- * Read the `admin: true` custom claim from a freshly-minted ID token.
- * Custom claims are baked into the token, so after sign-in we must force a
- * refresh (`true`) — otherwise a stale cached token (issued before the claim
- * was set by the seed script) won't include it.
- */
-async function readAdminClaim(user: User): Promise<boolean> {
+/** Read `isAdmin` from users/{uid}. Falls back to false on any error. */
+async function readIsAdmin(uid: string): Promise<boolean> {
   try {
-    const token = await user.getIdTokenResult(true);
-    return token.claims.admin === true;
-  } catch {
+    const snap = await getDoc(doc(db, "users", uid));
+    if (!snap.exists()) return false;
+    return snap.data()?.isAdmin === true;
+  } catch (err) {
+    console.error("[login] failed to read users/", uid, err);
     return false;
   }
 }
@@ -88,10 +86,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Where to redirect after a successful login:
-  //   • explicit ?next=/some/path  → honour it (safe-relative only)
-  //   • else if user is admin      → /admin
-  //   • else                       → /  (storefront home)
+  // ?next=/safe/path overrides the auto-decision.
   const explicitNext = getSafeNext(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
@@ -133,15 +128,18 @@ function LoginForm() {
     );
 
   /**
-   * Resolve the post-login destination.
-   *  1. If ?next= was provided and safe → use it verbatim.
-   *  2. Else if the user is an admin    → /admin
-   *  3. Else                            → /
+   * After any successful sign-in:
+   *   1. ?next= present        → go there
+   *   2. users/{uid}.isAdmin   → /admin
+   *   3. otherwise             → /
    */
-  const resolveDestination = async (user: User): Promise<string> => {
-    if (explicitNext) return explicitNext;
-    const isAdmin = await readAdminClaim(user);
-    return isAdmin ? "/admin" : "/";
+  const routeAfterLogin = async (user: User) => {
+    if (explicitNext) {
+      router.replace(explicitNext);
+      return;
+    }
+    const isAdmin = await readIsAdmin(user.uid);
+    router.replace(isAdmin ? "/admin" : "/");
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -156,9 +154,7 @@ function LoginForm() {
         email.trim(),
         password,
       );
-      const destination = await resolveDestination(cred.user);
-      // `replace` so the back button doesn't return to /login
-      router.replace(destination);
+      await routeAfterLogin(cred.user);
     } catch (err) {
       setError(mapAuthError((err as { code?: string })?.code));
       setLoading(false);
@@ -176,8 +172,7 @@ function LoginForm() {
           ? new GoogleAuthProvider()
           : new OAuthProvider("apple.com");
       const cred = await signInWithPopup(auth, provider);
-      const destination = await resolveDestination(cred.user);
-      router.replace(destination);
+      await routeAfterLogin(cred.user);
     } catch (err) {
       setError(mapAuthError((err as { code?: string })?.code));
       setSocialLoading(null);
@@ -187,7 +182,7 @@ function LoginForm() {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-white lg:flex-row">
       {/* ================================================================= */}
-      {/* LEFT PANEL: Image & Branding (Desktop: 55% width / Mobile: Top 35vh) */}
+      {/* LEFT PANEL */}
       {/* ================================================================= */}
       <div className="relative h-[35vh] w-full shrink-0 overflow-hidden bg-neutral-950 lg:h-auto lg:w-[55%]">
         <Image
@@ -198,8 +193,6 @@ function LoginForm() {
           sizes="(min-width: 1024px) 55vw, 100vw"
           className="object-cover object-top opacity-80"
         />
-
-        {/* Dark Gradient Overlays */}
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent lg:bg-gradient-to-r lg:from-neutral-950/90 lg:via-neutral-950/40 lg:to-transparent" />
         <div className="absolute inset-0 bg-[#ff5a1f]/10 mix-blend-overlay" />
 
@@ -251,11 +244,10 @@ function LoginForm() {
       </div>
 
       {/* ================================================================= */}
-      {/* RIGHT PANEL: Login Form */}
+      {/* RIGHT PANEL */}
       {/* ================================================================= */}
       <div className="relative z-20 -mt-4 flex flex-1 flex-col justify-center rounded-t-2xl bg-white px-6 py-8 sm:px-10 lg:mt-0 lg:rounded-none lg:px-16 lg:py-12 xl:px-24">
         <div className="mx-auto w-full max-w-[400px]">
-          {/* Top Nav */}
           <div className="mb-8 hidden items-center justify-end lg:flex">
             <p className="text-xs font-medium text-neutral-500">
               New here?{" "}
@@ -268,7 +260,6 @@ function LoginForm() {
             </p>
           </div>
 
-          {/* Header */}
           <div className="mb-6">
             <h2 className="font-display text-2xl font-black uppercase tracking-tight text-neutral-950 sm:text-3xl">
               Welcome Back
@@ -278,7 +269,6 @@ function LoginForm() {
             </p>
           </div>
 
-          {/* IP Warning */}
           {showIpWarning && (
             <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[10px] font-medium text-amber-700">
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -289,9 +279,7 @@ function LoginForm() {
             </div>
           )}
 
-          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3" noValidate>
-            {/* Email Input - Flat & Borderless */}
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
               <input
@@ -309,7 +297,6 @@ function LoginForm() {
               />
             </div>
 
-            {/* Password Input - Flat & Borderless */}
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
               <input
@@ -340,7 +327,6 @@ function LoginForm() {
               </button>
             </div>
 
-            {/* Remember & Forgot */}
             <div className="flex items-center justify-between pb-1 pt-1">
               <label className="flex cursor-pointer items-center gap-2">
                 <input
@@ -361,7 +347,6 @@ function LoginForm() {
               </Link>
             </div>
 
-            {/* Error */}
             {error && (
               <div
                 role="alert"
@@ -372,7 +357,6 @@ function LoginForm() {
               </div>
             )}
 
-            {/* Submit Button - Solid Black / Brand Orange Hover */}
             <button
               type="submit"
               disabled={busy || !email || !password}
@@ -392,7 +376,6 @@ function LoginForm() {
             </button>
           </form>
 
-          {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-neutral-200" />
@@ -404,7 +387,6 @@ function LoginForm() {
             </div>
           </div>
 
-          {/* Social Login - Flat, Borderless */}
           <div className="space-y-2">
             <button
               type="button"
@@ -438,7 +420,6 @@ function LoginForm() {
             </button>
           </div>
 
-          {/* Mobile Footer Nav */}
           <div className="mt-6 text-center lg:hidden">
             <p className="text-xs font-medium text-neutral-500">
               New here?{" "}
