@@ -24,7 +24,7 @@ import { db } from "../../lib/firebase/client";
 import { useWishlist } from "./../context/wishlist-context";
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — aligned with scripts/seed.ts
 // ---------------------------------------------------------------------------
 type Banner = {
   id: string;
@@ -41,14 +41,21 @@ type Product = {
   id: string;
   name: string;
   slug: string;
+  description: string;
+  shortDescription: string;
+  productType: string;
   basePricePaise: number;
   mrpPaise: number;
   images: string[];
   categoryId: string;
   collectionIds: string[];
+  brandId: string;
+  brandName: string;
+  gender: "men" | "women" | "unisex";
   colors: string[];
   sizes: string[];
-  soldCount: number;
+  inventoryValue: number;
+  attributes: Record<string, unknown>;
 };
 
 type Category = {
@@ -56,6 +63,7 @@ type Category = {
   name: string;
   slug: string;
   image: string | null;
+  description: string | null;
 };
 
 type Collection = {
@@ -64,6 +72,7 @@ type Collection = {
   slug: string;
   image: string | null;
   description: string | null;
+  sortOrder: number;
 };
 
 type Section = { id: string; type: string; isActive: boolean };
@@ -85,6 +94,9 @@ type Tab = { key: string; label: string; href: string; products: Product[] };
 
 type Filters = {
   categories: string[];
+  brands: string[];
+  gender: string[];
+  productTypes: string[];
   price: string | null;
   sizes: string[];
   colors: string[];
@@ -106,6 +118,9 @@ const PAGE_SIZE = 20;
 
 const EMPTY_FILTERS: Filters = {
   categories: [],
+  brands: [],
+  gender: [],
+  productTypes: [],
   price: null,
   sizes: [],
   colors: [],
@@ -126,7 +141,25 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "discount", label: "Biggest discount" },
 ];
 
-const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "One Size"];
+const GENDER_ORDER = ["men", "women", "unisex"] as const;
+const GENDER_LABEL: Record<string, string> = {
+  men: "Men",
+  women: "Women",
+  unisex: "Unisex",
+};
+
+// Sizes from seed: numeric shoe sizes, apparel (S/M, L/XL), One Size
+const SIZE_ORDER = [
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "One Size",
+  "S/M",
+  "L/XL",
+];
 function sizeRank(s: string): number {
   const i = SIZE_ORDER.indexOf(s);
   if (i >= 0) return i;
@@ -169,27 +202,59 @@ const FEATURES = [
   },
 ];
 
-const COLOR_MAP: Record<string, string> = {
-  black: "#111111",
-  white: "#f7f7f7",
-  orange: "#ff5a1f",
-  charcoal: "#3a3a3a",
-  navy: "#1e2a44",
-  grey: "#9aa0a6",
-  gray: "#9aa0a6",
-  teal: "#0f766e",
-};
+// ---------------------------------------------------------------------------
+// Color parsing — seed uses compound names ("Mist/Aqua", "Wht-Blk", "Blk/Sky")
+// ---------------------------------------------------------------------------
+const COLOR_TOKENS: { match: RegExp; hex: string }[] = [
+  { match: /^black|^blk/, hex: "#111111" },
+  { match: /^white|^wht/, hex: "#f5f5f5" },
+  { match: /^grey|^gray|^gry/, hex: "#9aa0a6" },
+  { match: /^silver|^slvr/, hex: "#c0c0c0" },
+  { match: /^navy/, hex: "#1e2a44" },
+  { match: /^blue|^blu/, hex: "#2563eb" },
+  { match: /^sky|^powder/, hex: "#7dd3fc" },
+  { match: /^teal|^aqua|^ember/, hex: "#0f766e" },
+  { match: /^green|^grn|^pista|^sage/, hex: "#4ade80" },
+  { match: /^yellow|^yllw|^lemon|^mustard|^mstd/, hex: "#facc15" },
+  { match: /^orange|^ornge|^orn\b|^f\.ornge/, hex: "#ff5a1f" },
+  { match: /^red/, hex: "#dc2626" },
+  { match: /^pink/, hex: "#ec4899" },
+  { match: /^purple/, hex: "#7c3aed" },
+  { match: /^brown/, hex: "#78350f" },
+  { match: /^beige|^mist/, hex: "#e7e5e4" },
+  { match: /^mouse/, hex: "#737373" },
+  { match: /^charcoal|^d\.grey|^d\.gry/, hex: "#3a3a3a" },
+  { match: /^topaz/, hex: "#0d9488" },
+];
+
 function colorHex(name: string): string {
-  return COLOR_MAP[name.trim().toLowerCase()] ?? "#d4d4d4";
+  const first = name
+    .trim()
+    .toLowerCase()
+    .split(/[\/\-]/)[0]
+    .trim();
+  for (const { match, hex } of COLOR_TOKENS) {
+    if (match.test(first)) return hex;
+  }
+  return "#d4d4d4";
 }
 
-// Filter matching. `skip` leaves one group out so option counts stay accurate
-// (e.g. category counts ignore the category filter itself).
+// Filter matching. `skip` leaves one group out so option counts stay accurate.
 function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
   if (
     skip !== "categories" &&
     f.categories.length &&
     !f.categories.includes(p.categoryId)
+  )
+    return false;
+  if (skip !== "brands" && f.brands.length && !f.brands.includes(p.brandId))
+    return false;
+  if (skip !== "gender" && f.gender.length && !f.gender.includes(p.gender))
+    return false;
+  if (
+    skip !== "productTypes" &&
+    f.productTypes.length &&
+    !f.productTypes.includes(p.productType)
   )
     return false;
   if (skip !== "price" && f.price) {
@@ -218,7 +283,6 @@ function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
   return true;
 }
 
-// Hides every scrollbar on the page while keeping scrolling fully functional
 function NoScrollbars() {
   return (
     <style>{`
@@ -229,10 +293,7 @@ function NoScrollbars() {
 }
 
 // ---------------------------------------------------------------------------
-// Hero slider: every banner is a slide.
-// Desktop: info on the left 40%, image on the right 60%.
-// Mobile: image on top, info underneath (text never sits on a busy photo).
-// Autoplay is driven by the progress bar itself, so hover-pause is exact.
+// Hero slider
 // ---------------------------------------------------------------------------
 function HeroSlider({ slides }: { slides: Slide[] }) {
   const [index, setIndex] = useState(0);
@@ -278,7 +339,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
         @media (prefers-reduced-motion: reduce) { .hero-progress { animation: none; transform: none; } }
       `}</style>
 
-      {/* Slides share one grid cell and fill the full hero height */}
       <div className="grid h-full grid-cols-1 grid-rows-1">
         {slides.map((s, i) => {
           const active = i === index;
@@ -293,7 +353,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
                   : "pointer-events-none z-0 opacity-0"
               }`}
             >
-              {/* Image: top 46% on mobile, right 60% on desktop */}
               <div className="relative order-first shrink-0 basis-[46%] overflow-hidden lg:order-last lg:h-full lg:basis-auto">
                 {s.imageUrl && (
                   <img
@@ -309,7 +368,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-neutral-950 lg:bg-gradient-to-r lg:from-neutral-950 lg:via-neutral-950/10 lg:to-transparent" />
               </div>
 
-              {/* Info */}
               <div className="hero-pad relative flex min-h-0 flex-1 flex-col justify-center pb-10 lg:pb-12">
                 <div
                   className={`max-w-lg transition-all delay-150 duration-700 ${
@@ -360,7 +418,6 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
         })}
       </div>
 
-      {/* Navigator: one segment per slide with a live progress bar */}
       {count > 1 && (
         <>
           <div className="hero-pad absolute inset-x-0 bottom-4 z-20 lg:right-[60%]">
@@ -426,7 +483,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Category strip (compact)
+// Category strip
 // ---------------------------------------------------------------------------
 function CategoryStrip({
   categories,
@@ -508,7 +565,7 @@ function CategoryStrip({
 }
 
 // ---------------------------------------------------------------------------
-// Product card (compact)
+// Product card
 // ---------------------------------------------------------------------------
 function ProductCard({ product }: { product: Product }) {
   const { addItem, removeItem, isInWishlist } = useWishlist();
@@ -630,7 +687,7 @@ function ProductCard({ product }: { product: Product }) {
 }
 
 // ---------------------------------------------------------------------------
-// Filters (compact)
+// Filters
 // ---------------------------------------------------------------------------
 function FilterGroup({
   title,
@@ -684,25 +741,46 @@ function FilterPanel({
   filters,
   onChange,
   categoryNames,
+  brandNames,
 }: {
   products: Product[];
   filters: Filters;
   onChange: (f: Filters) => void;
   categoryNames: Record<string, string>;
+  brandNames: Record<string, string>;
 }) {
   const catIds = Object.keys(categoryNames).filter((id) =>
     products.some((p) => p.categoryId === id),
   );
+  const brandIds = Object.keys(brandNames).filter((id) =>
+    products.some((p) => p.brandId === id),
+  );
+  const presentGenders = GENDER_ORDER.filter((g) =>
+    products.some((p) => p.gender === g),
+  );
+  const productTypes = Array.from(
+    new Set(products.map((p) => p.productType).filter(Boolean)),
+  ).sort();
+
   const sizes = Array.from(new Set(products.flatMap((p) => p.sizes))).sort(
     (a, b) => sizeRank(a) - sizeRank(b),
   );
-  const colors = Array.from(new Set(products.flatMap((p) => p.colors)));
+  const colors = Array.from(new Set(products.flatMap((p) => p.colors))).sort();
 
   const count = (skip: keyof Filters, test: (p: Product) => boolean) =>
     products.filter((p) => matches(p, filters, skip) && test(p)).length;
 
-  const toggle = (key: "categories" | "sizes" | "colors", val: string) => {
-    const list = filters[key];
+  const toggle = (
+    key:
+      | "categories"
+      | "brands"
+      | "gender"
+      | "productTypes"
+      | "sizes"
+      | "colors",
+    val: string,
+  ) => {
+    const list = filters[key] as string[];
     onChange({
       ...filters,
       [key]: list.includes(val)
@@ -722,6 +800,48 @@ function FilterPanel({
               checked={filters.categories.includes(id)}
               onChange={() => toggle("categories", id)}
               count={count("categories", (p) => p.categoryId === id)}
+            />
+          ))}
+        </FilterGroup>
+      )}
+
+      {brandIds.length > 1 && (
+        <FilterGroup title="Brand">
+          {brandIds.map((id) => (
+            <CheckRow
+              key={id}
+              label={brandNames[id]}
+              checked={filters.brands.includes(id)}
+              onChange={() => toggle("brands", id)}
+              count={count("brands", (p) => p.brandId === id)}
+            />
+          ))}
+        </FilterGroup>
+      )}
+
+      {presentGenders.length > 1 && (
+        <FilterGroup title="Gender">
+          {presentGenders.map((g) => (
+            <CheckRow
+              key={g}
+              label={GENDER_LABEL[g]}
+              checked={filters.gender.includes(g)}
+              onChange={() => toggle("gender", g)}
+              count={count("gender", (p) => p.gender === g)}
+            />
+          ))}
+        </FilterGroup>
+      )}
+
+      {productTypes.length > 1 && (
+        <FilterGroup title="Type">
+          {productTypes.map((t) => (
+            <CheckRow
+              key={t}
+              label={t}
+              checked={filters.productTypes.includes(t)}
+              onChange={() => toggle("productTypes", t)}
+              count={count("productTypes", (p) => p.productType === t)}
             />
           ))}
         </FilterGroup>
@@ -898,14 +1018,21 @@ function FilterSheet({
 }
 
 // ---------------------------------------------------------------------------
-// Showcase: tabs + filters + sort + load more, all in place
+// Showcase: collection tabs + attribute filters + sort + load more
+//
+// Tab strategy: one tab per seeded collection ("new-arrivals", "carbon-racing",
+// "bestsellers") — no hardcoded duplicates. A trailing "All products" tab is
+// added if the collections don't already cover everything, so users can always
+// reach the full catalogue from this section.
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
   categoryNames,
+  brandNames,
 }: {
   tabs: Tab[];
   categoryNames: Record<string, string>;
+  brandNames: Record<string, string>;
 }) {
   const [activeKey, setActiveKey] = useState(tabs[0]?.key);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -947,6 +1074,33 @@ function Showcase({
           categories: filters.categories.filter((x) => x !== id),
         }),
     })),
+    ...filters.brands.map((id) => ({
+      key: `b-${id}`,
+      label: brandNames[id] ?? id,
+      remove: () =>
+        update({
+          ...filters,
+          brands: filters.brands.filter((x) => x !== id),
+        }),
+    })),
+    ...filters.gender.map((g) => ({
+      key: `g-${g}`,
+      label: GENDER_LABEL[g] ?? g,
+      remove: () =>
+        update({
+          ...filters,
+          gender: filters.gender.filter((x) => x !== g),
+        }),
+    })),
+    ...filters.productTypes.map((t) => ({
+      key: `t-${t}`,
+      label: t,
+      remove: () =>
+        update({
+          ...filters,
+          productTypes: filters.productTypes.filter((x) => x !== t),
+        }),
+    })),
     ...(filters.price
       ? [
           {
@@ -986,7 +1140,7 @@ function Showcase({
 
   return (
     <section className={`${WRAP} pt-5`} aria-label="Shop products">
-      {/* Heading + tabs share one row on desktop */}
+      {/* Heading + tabs */}
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-5">
         <h2 className="font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
           Shop the drop
@@ -1055,6 +1209,7 @@ function Showcase({
             filters={filters}
             onChange={update}
             categoryNames={categoryNames}
+            brandNames={brandNames}
           />
         </aside>
 
@@ -1104,7 +1259,7 @@ function Showcase({
             </div>
           </div>
 
-          {/* Active filter chips: one scrolling line on mobile, wrapping on desktop */}
+          {/* Active filter chips */}
           {chips.length > 0 && (
             <div
               className={`${HIDE_SCROLLBAR} -mx-4 mb-3 flex items-center gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0`}
@@ -1190,6 +1345,7 @@ function Showcase({
           filters={filters}
           onChange={update}
           categoryNames={categoryNames}
+          brandNames={brandNames}
         />
       </FilterSheet>
     </section>
@@ -1197,7 +1353,7 @@ function Showcase({
 }
 
 // ---------------------------------------------------------------------------
-// Collection cards (compact: scroller on mobile, 3-up on desktop)
+// Collection cards
 // ---------------------------------------------------------------------------
 function CollectionCards({
   collections,
@@ -1248,7 +1404,7 @@ function CollectionCards({
 }
 
 // ---------------------------------------------------------------------------
-// Features strip (compact)
+// Features strip
 // ---------------------------------------------------------------------------
 function FeaturesStrip() {
   return (
@@ -1354,7 +1510,6 @@ export default function StorefrontHomePage() {
           getDocs(query(collection(db, "products"), limit(60))),
           byOrder("categories"),
           byOrder("collections"),
-          // CMS sections are optional: never let them break the page
           byOrder("homepageSections").catch(() => null),
         ]);
 
@@ -1384,6 +1539,9 @@ export default function StorefrontHomePage() {
               id: d.id,
               name: p.name || "",
               slug: p.slug || d.id,
+              description: p.description || "",
+              shortDescription: p.shortDescription || "",
+              productType: p.productType || "",
               basePricePaise: p.basePricePaise || 0,
               mrpPaise: p.mrpPaise || 0,
               images: Array.isArray(p.images) ? p.images : [],
@@ -1391,9 +1549,22 @@ export default function StorefrontHomePage() {
               collectionIds: Array.isArray(p.collectionIds)
                 ? p.collectionIds
                 : [],
+              brandId: p.brandId || "",
+              brandName: p.brandName || "",
+              gender:
+                p.gender === "men" ||
+                p.gender === "women" ||
+                p.gender === "unisex"
+                  ? p.gender
+                  : "unisex",
               colors: Array.isArray(p.colors) ? p.colors : [],
               sizes: Array.isArray(p.sizes) ? p.sizes : [],
-              soldCount: typeof p.soldCount === "number" ? p.soldCount : 0,
+              inventoryValue:
+                typeof p.inventoryValue === "number" ? p.inventoryValue : 0,
+              attributes:
+                p.attributes && typeof p.attributes === "object"
+                  ? p.attributes
+                  : {},
             };
           });
 
@@ -1406,6 +1577,7 @@ export default function StorefrontHomePage() {
               name: c.name || "",
               slug: c.slug || d.id,
               image: c.image || null,
+              description: c.description || null,
             };
           });
 
@@ -1419,8 +1591,10 @@ export default function StorefrontHomePage() {
               slug: c.slug || d.id,
               image: c.image || null,
               description: c.description || null,
+              sortOrder: c.sortOrder || 0,
             };
-          });
+          })
+          .sort((a, b) => a.sortOrder - b.sortOrder);
 
         const sections: Section[] = (sectionsSnap?.docs ?? []).map((d) => {
           const s = d.data();
@@ -1456,7 +1630,7 @@ export default function StorefrontHomePage() {
     return s ? s.isActive : true;
   };
 
-  // ---- Hero: every active banner is a slide (home_hero first, then the rest)
+  // ---- Hero slides
   const heroFirst = data.banners.filter((b) => b.placement === "home_hero");
   const others = data.banners.filter((b) => b.placement !== "home_hero");
   const heroSlides: Slide[] = [...heroFirst, ...others].map((b) => ({
@@ -1483,49 +1657,49 @@ export default function StorefrontHomePage() {
   const categoryNames: Record<string, string> = {};
   const categoryCounts: Record<string, number> = {};
   const collectionCounts: Record<string, number> = {};
+  const brandNames: Record<string, string> = {};
+
   data.categories.forEach((c) => (categoryNames[c.id] = c.name));
   data.products.forEach((p) => {
     categoryCounts[p.categoryId] = (categoryCounts[p.categoryId] ?? 0) + 1;
     p.collectionIds.forEach(
       (id) => (collectionCounts[id] = (collectionCounts[id] ?? 0) + 1),
     );
+    if (p.brandId && p.brandName) brandNames[p.brandId] = p.brandName;
   });
 
-  // ---- Showcase tabs
+  // ---- Showcase tabs — one per collection, no hardcoded duplicates.
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
   const tabs: Tab[] = [];
 
-  if (sectionOn("bestsellers") && data.products.length) {
-    tabs.push({
-      key: "bestsellers",
-      label: "Bestsellers",
-      href: "/products",
-      // Uses soldCount when present, otherwise falls back to biggest savings
-      products: [...data.products].sort(
-        (a, b) => b.soldCount - a.soldCount || disc(b) - disc(a),
-      ),
-    });
-  }
   data.collections.forEach((col) => {
     const list = data.products.filter((p) => p.collectionIds.includes(col.id));
     if (list.length) {
+      // Curated collections like "bestsellers" are naturally ranked by discount
+      // since the seed no longer stores soldCount.
+      const sorted =
+        col.id === "bestsellers"
+          ? [...list].sort((a, b) => disc(b) - disc(a))
+          : list;
       tabs.push({
         key: col.id,
         label: col.name,
         href: `/collections/${col.slug}`,
-        products: list,
+        products: sorted,
       });
     }
   });
-  const deals = data.products
-    .filter((p) => disc(p) > 0)
-    .sort((a, b) => disc(b) - disc(a));
-  if (deals.length) {
+
+  // Add an "All products" tab at the end so users can always browse everything
+  // from this section, even if collections don't cover all products.
+  const coveredIds = new Set(tabs.flatMap((t) => t.products.map((p) => p.id)));
+  const uncovered = data.products.filter((p) => !coveredIds.has(p.id));
+  if (uncovered.length || tabs.length === 0) {
     tabs.push({
-      key: "deals",
-      label: "Top deals",
+      key: "__all__",
+      label: "All products",
       href: "/products",
-      products: deals,
+      products: data.products,
     });
   }
 
@@ -1533,7 +1707,6 @@ export default function StorefrontHomePage() {
     <div className="overflow-x-clip bg-white text-neutral-950">
       <NoScrollbars />
 
-      {/* Full-bleed hero: no outer padding, no rounded corners */}
       <HeroSlider slides={heroSlides} />
 
       {sectionOn("category_grid") && (
@@ -1544,7 +1717,11 @@ export default function StorefrontHomePage() {
       )}
 
       {tabs.length > 0 ? (
-        <Showcase tabs={tabs} categoryNames={categoryNames} />
+        <Showcase
+          tabs={tabs}
+          categoryNames={categoryNames}
+          brandNames={brandNames}
+        />
       ) : (
         <section className={`${WRAP} py-12 text-center`}>
           <p className="text-lg font-bold">New products are on the way</p>

@@ -227,65 +227,19 @@ const brands = [
 ];
 
 const categories = [
-  {
-    id: "running",
-    name: "Running",
-    slug: "running",
-    sortOrder: 1,
-    status: "active",
-  },
-  {
-    id: "training",
-    name: "Training & Gym",
-    slug: "training",
-    sortOrder: 2,
-    status: "active",
-  },
-  {
-    id: "walking",
-    name: "Walking",
-    slug: "walking",
-    sortOrder: 3,
-    status: "active",
-  },
-  {
-    id: "accessories",
-    name: "Accessories",
-    slug: "accessories",
-    sortOrder: 4,
-    status: "active",
-  },
+  { id: "running", name: "Running", slug: "running", sortOrder: 1, status: "active" },
+  { id: "training", name: "Training & Gym", slug: "training", sortOrder: 2, status: "active" },
+  { id: "walking", name: "Walking", slug: "walking", sortOrder: 3, status: "active" },
+  { id: "accessories", name: "Accessories", slug: "accessories", sortOrder: 4, status: "active" },
 ];
 
 const collections = [
-  {
-    id: "new-arrivals",
-    name: "New Arrivals",
-    slug: "new-arrivals",
-    sortOrder: 1,
-    status: "active",
-  },
-  {
-    id: "carbon-racing",
-    name: "Carbon Racing",
-    slug: "carbon-racing",
-    sortOrder: 2,
-    status: "active",
-  },
-  {
-    id: "bestsellers",
-    name: "Bestsellers",
-    slug: "bestsellers",
-    sortOrder: 3,
-    status: "active",
-  },
+  { id: "new-arrivals", name: "New Arrivals", slug: "new-arrivals", sortOrder: 1, status: "active" },
+  { id: "carbon-racing", name: "Carbon Racing", slug: "carbon-racing", sortOrder: 2, status: "active" },
+  { id: "bestsellers", name: "Bestsellers", slug: "bestsellers", sortOrder: 3, status: "active" },
 ];
 
-const IMG = (
-  label: string,
-  hexBg: string = "111111",
-  hexFg: string = "FF6B00",
-) =>
+const IMG = (label: string, hexBg: string = "111111", hexFg: string = "FF6B00") =>
   `https://placehold.co/800x1000/${hexBg}/${hexFg}?text=${encodeURIComponent(label)}`;
 
 // ---------------------------------------------------------------------------
@@ -315,8 +269,7 @@ const products: SeedProduct[] = [
     id: "columbus-victory",
     name: "Columbus Victory",
     slug: "columbus-victory",
-    description:
-      "Experience ultimate comfort and speed with the Columbus Victory. Features a breathable mesh upper and a responsive sole.",
+    description: "Experience ultimate comfort and speed with the Columbus Victory. Features a breathable mesh upper and a responsive sole.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["new-arrivals", "bestsellers"],
@@ -334,8 +287,7 @@ const products: SeedProduct[] = [
     id: "columbus-freemove",
     name: "Columbus Freemove",
     slug: "columbus-freemove",
-    description:
-      "Built with Carbon Tech for explosive speed. Ideal for race day and tempo runs.",
+    description: "Built with Carbon Tech for explosive speed. Ideal for race day and tempo runs.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["carbon-racing", "bestsellers"],
@@ -353,8 +305,7 @@ const products: SeedProduct[] = [
     id: "columbus-destiny",
     name: "Columbus Destiny",
     slug: "columbus-destiny",
-    description:
-      "Reliable daily trainer with Carbon Racing technology for consistent performance.",
+    description: "Reliable daily trainer with Carbon Racing technology for consistent performance.",
     productType: "Shoe",
     categoryId: "training",
     collectionIds: ["new-arrivals"],
@@ -372,8 +323,7 @@ const products: SeedProduct[] = [
     id: "columbus-streak",
     name: "Columbus Streak",
     slug: "columbus-streak",
-    description:
-      "Lightweight and breathable. Features Boom Fiber midsole for maximum energy return.",
+    description: "Lightweight and breathable. Features Boom Fiber midsole for maximum energy return.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["new-arrivals"],
@@ -391,8 +341,7 @@ const products: SeedProduct[] = [
     id: "columbus-facelift",
     name: "Columbus Facelift",
     slug: "columbus-facelift",
-    description:
-      "Next Gen design meets everyday comfort. Perfect for casual runs and workouts.",
+    description: "Next Gen design meets everyday comfort. Perfect for casual runs and workouts.",
     productType: "Shoe",
     categoryId: "walking",
     collectionIds: ["bestsellers"],
@@ -402,11 +351,7 @@ const products: SeedProduct[] = [
     basePricePaise: 229900,
     mrpPaise: 229900,
     inventoryValue: 110,
-    attributes: {
-      generation: "Next Gen",
-      drop: "10mm",
-      terrain: "Road/Walking",
-    },
+    attributes: { generation: "Next Gen", drop: "10mm", terrain: "Road/Walking" },
     sizes: ["6", "7", "8", "9", "10"],
     colors: ["Blk/Sky", "L.Grey/D.Grey", "Wht/L.Pista"],
   },
@@ -414,8 +359,7 @@ const products: SeedProduct[] = [
     id: "columbus-rift",
     name: "Columbus Rift",
     slug: "columbus-rift",
-    description:
-      "Durable and stylish. Built to withstand the rigors of daily training.",
+    description: "Durable and stylish. Built to withstand the rigors of daily training.",
     productType: "Shoe",
     categoryId: "training",
     collectionIds: ["new-arrivals"],
@@ -433,8 +377,7 @@ const products: SeedProduct[] = [
     id: "columbus-solar",
     name: "Columbus Solar",
     slug: "columbus-solar",
-    description:
-      "Glide through your runs with the Solar's smooth transition and carbon tech.",
+    description: "Glide through your runs with the Solar's smooth transition and carbon tech.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["carbon-racing"],
@@ -452,8 +395,7 @@ const products: SeedProduct[] = [
     id: "columbus-cubic",
     name: "Columbus Cubic",
     slug: "columbus-cubic",
-    description:
-      "Perfect entry-level running shoe with Next Gen 9.0 technology.",
+    description: "Perfect entry-level running shoe with Next Gen 9.0 technology.",
     productType: "Shoe",
     categoryId: "walking",
     collectionIds: ["bestsellers"],
@@ -463,11 +405,7 @@ const products: SeedProduct[] = [
     basePricePaise: 179900,
     mrpPaise: 179900,
     inventoryValue: 200,
-    attributes: {
-      generation: "Next Gen 9.0",
-      drop: "10mm",
-      terrain: "Road/Walking",
-    },
+    attributes: { generation: "Next Gen 9.0", drop: "10mm", terrain: "Road/Walking" },
     sizes: ["6", "7", "8", "9", "10"],
     colors: ["D.Grey/Blk/Sage.Grn", "Wht/Mist/Mstd", "Wht/Lt.Yllw"],
   },
@@ -475,8 +413,7 @@ const products: SeedProduct[] = [
     id: "columbus-arcade",
     name: "Columbus Arcade",
     slug: "columbus-arcade",
-    description:
-      "Stylish runner with great cushioning. Perfect for long distances.",
+    description: "Stylish runner with great cushioning. Perfect for long distances.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["new-arrivals"],
@@ -488,19 +425,13 @@ const products: SeedProduct[] = [
     inventoryValue: 90,
     attributes: { cushioning: "Max", drop: "8mm", terrain: "Road" },
     sizes: ["6", "7", "8", "9", "10"],
-    colors: [
-      "Mist/F.Ornge",
-      "Blk/Silver",
-      "Slvr Gry/Powder.Blu",
-      "Pista Grn/Mustard",
-    ],
+    colors: ["Mist/F.Ornge", "Blk/Silver", "Slvr Gry/Powder.Blu", "Pista Grn/Mustard"],
   },
   {
     id: "columbus-stanfield",
     name: "Columbus Stanfield",
     slug: "columbus-stanfield",
-    description:
-      "Comfort meets performance. Next Gen 9.0 midsole for a plush ride.",
+    description: "Comfort meets performance. Next Gen 9.0 midsole for a plush ride.",
     productType: "Shoe",
     categoryId: "walking",
     collectionIds: ["bestsellers"],
@@ -518,8 +449,7 @@ const products: SeedProduct[] = [
     id: "columbus-vision",
     name: "Columbus Vision",
     slug: "columbus-vision",
-    description:
-      "Elevate your running experience with Vision. Next Gen 9.0 technology.",
+    description: "Elevate your running experience with Vision. Next Gen 9.0 technology.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["new-arrivals"],
@@ -531,19 +461,13 @@ const products: SeedProduct[] = [
     inventoryValue: 105,
     attributes: { generation: "Next Gen 9.0", drop: "8mm", terrain: "Road" },
     sizes: ["6", "7", "8", "9", "10"],
-    colors: [
-      "Wht/Mist/Blk",
-      "Wht/L.Pista",
-      "Wht/Topaz Blue",
-      "Wht/R.Slate/F.Orng",
-    ],
+    colors: ["Wht/Mist/Blk", "Wht/L.Pista", "Wht/Topaz Blue", "Wht/R.Slate/F.Orng"],
   },
   {
     id: "columbus-ember",
     name: "Columbus Ember",
     slug: "columbus-ember",
-    description:
-      "Carbon racing shoe for serious athletes. Lightweight and responsive.",
+    description: "Carbon racing shoe for serious athletes. Lightweight and responsive.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["carbon-racing"],
@@ -561,8 +485,7 @@ const products: SeedProduct[] = [
     id: "columbus-longrun",
     name: "Columbus Longrun",
     slug: "columbus-longrun",
-    description:
-      "Designed for long distances. Maximum comfort and carbon tech propulsion.",
+    description: "Designed for long distances. Maximum comfort and carbon tech propulsion.",
     productType: "Shoe",
     categoryId: "running",
     collectionIds: ["carbon-racing", "bestsellers"],
@@ -574,12 +497,7 @@ const products: SeedProduct[] = [
     inventoryValue: 85,
     attributes: { tech: "Carbon Tech", drop: "8mm", terrain: "Road" },
     sizes: ["6", "7", "8", "9", "10"],
-    colors: [
-      "Wht/Mist/Black",
-      "White/Pista/Orange",
-      "Wht/L.Pista/Lemon Yellow",
-      "Aqua Grn/Blk",
-    ],
+    colors: ["Wht/Mist/Black", "White/Pista/Orange", "Wht/L.Pista/Lemon Yellow", "Aqua Grn/Blk"],
   },
   {
     id: "columbus-aeroflow",
@@ -640,8 +558,7 @@ const products: SeedProduct[] = [
     id: "shera-performance-socks",
     name: "Shera Performance Socks",
     slug: "shera-performance-socks",
-    description:
-      "Cushioned running socks to keep your feet dry and blister-free.",
+    description: "Cushioned running socks to keep your feet dry and blister-free.",
     productType: "Accessories",
     categoryId: "accessories",
     collectionIds: ["bestsellers"],
@@ -659,8 +576,7 @@ const products: SeedProduct[] = [
     id: "shera-gym-bag",
     name: "Shera Gym Duffle Bag",
     slug: "shera-gym-duffle-bag",
-    description:
-      "Spacious duffle bag with shoe compartment for your gym essentials.",
+    description: "Spacious duffle bag with shoe compartment for your gym essentials.",
     productType: "Accessories",
     categoryId: "accessories",
     collectionIds: ["new-arrivals"],
@@ -691,7 +607,7 @@ const products: SeedProduct[] = [
     attributes: { capacity: "1L", material: "Stainless Steel" },
     sizes: ["One Size"],
     colors: ["Matte Black", "Neon Orange"],
-  },
+  }
 ];
 
 const banners = [
@@ -808,7 +724,7 @@ const customers: SeedCustomer[] = [
         postalCode: "411001",
         country: "India",
         isDefault: true,
-      },
+      }
     ],
   },
   {
@@ -852,7 +768,7 @@ const customers: SeedCustomer[] = [
         isDefault: true,
       },
     ],
-  },
+  }
 ];
 
 // ---------------------------------------------------------------------------
@@ -884,19 +800,19 @@ async function main() {
   console.log(
     "🧹 Wiping previous seed data (orders, carts, payments, catalog, addresses, wishlists)…",
   );
-
+  
   // Wipe transactional data and catalog data
   await wipeCollections([
-    "orders",
-    "carts",
-    "payments",
+    "orders", 
+    "carts", 
+    "payments", 
     "idempotencyKeys",
     "categories",
     "collections",
     "brands",
-    "products",
+    "products"
   ]);
-
+  
   const allUsers = await db.collection("users").get();
   for (const u of allUsers.docs) {
     await deleteCollectionRecursive(u.ref.collection("addresses"));
@@ -973,17 +889,14 @@ async function main() {
 
     const variants = [];
     // Distribute inventory across variants
-    const stockPerVariant = Math.floor(
-      p.inventoryValue / (sizes.length * colors.length),
-    );
-
+    const stockPerVariant = Math.floor(p.inventoryValue / (sizes.length * colors.length));
+    
     for (const size of sizes) {
       for (const color of colors) {
         // Sanitize variantId to remove slashes and other problematic characters
         const variantId = safeId(`${size}-${color}`);
-        const sku =
-          `CLB-${safeId(p.id)}-${safeId(size)}-${safeId(color)}`.toUpperCase();
-
+        const sku = `CLB-${safeId(p.id)}-${safeId(size)}-${safeId(color)}`.toUpperCase();
+          
         variants.push({
           id: variantId,
           data: {
