@@ -1,29 +1,30 @@
-// app/components/splash-screen.tsx
+// app/(storefront)/_components/splash-screen.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Brand splash.
+ * Brand splash — runner on the LEFT, brand name on the RIGHT, centered.
  *
- * Timeline (SHOW_MS = 2.8s, then a 0.45s fade-out):
- *   Layout: runner on the LEFT, brand name on the RIGHT, the pair centered on screen.
- *   0.00s  runner slides in from the left edge into its place (with orange speed lines)
- *   0.65s  "SHERA" wipes in to the right of the runner, same style as the navbar logo
- *   1.20s  "SPORTS WEAR" fades in under it while its letter-spacing widens
- *   0.00s  thin orange progress bar fills along the bottom until exit
+ * Plays on EVERY full page load / reload. It lives in the root layout, which
+ * stays mounted during in-app navigation, so clicking around the store does
+ * not replay it.
  *
- * - Plays once per browser tab session (sessionStorage). Pass oncePerSession={false} to always play.
- * - Waits for the runner image to load before starting, so it never "pops in".
- * - Respects prefers-reduced-motion (static logo, shorter hold).
- * - Locks page scroll while visible.
+ * Fully fluid: every size is derived from one CSS variable (--h = runner
+ * height) that scales with the viewport, so the pair always fits from a
+ * 320px phone to a 4K desktop, portrait or landscape.
  *
- * Usage: render <SplashScreen /> once, as the first child of <body> in app/layout.tsx.
- * Image:  public/images/shera-runner.png
+ * Timeline (SHOW_MS = 2.4s, then a 0.45s fade-out)
+ *   0.00s  runner slides in from the left edge into place (+ orange speed lines)
+ *   0.60s  "SHERA" wipes in to the right of the runner
+ *   1.10s  "SPORTS WEAR" fades in while its letter-spacing widens
+ *   0.00s  orange progress bar fills along the bottom until exit
+ *
+ * Waits for the runner image before starting. Respects prefers-reduced-motion.
+ * Image: public/images/shera-runner.png
  */
 
-const SESSION_KEY = "shera-splash-seen";
-const SHOW_MS = 2800;
+const SHOW_MS = 2400;
 const SHOW_MS_REDUCED = 1200;
 const EXIT_MS = 450;
 const IMAGE_TIMEOUT_MS = 1500;
@@ -34,35 +35,55 @@ const CSS = `
 .sp-root{transition:opacity ${EXIT_MS}ms ease}
 .sp-root[data-exit="true"]{opacity:0;pointer-events:none}
 
-/* hidden until the animation starts */
-.sp-runner{opacity:0;transform:translateX(-70vw);transform-origin:50% 100%;will-change:transform}
-.sp-word{opacity:0}
-.sp-sub{opacity:0;letter-spacing:.4em}
-.sp-bar{transform:scaleX(0)}
+/* one fluid unit drives every size */
+.sp-stage{
+  --h:clamp(88px,min(34vw,30vh),220px);
+  display:flex;align-items:center;justify-content:center;
+  gap:calc(var(--h)*.16);
+  max-width:100%;padding:0 5vw;
+}
+.sp-runner{position:relative;flex:none;opacity:0;transform:translateX(-80vw);transform-origin:50% 100%;will-change:transform}
+.sp-img{display:block;height:var(--h);width:auto;max-width:none;user-select:none;-webkit-user-drag:none}
 
-.sp-root[data-run="true"] .sp-runner{animation:sp-run 1.1s cubic-bezier(.16,1,.3,1) forwards}
-.sp-root[data-run="true"] .sp-line{animation:sp-line .55s ease-in .55s forwards}
-.sp-root[data-run="true"] .sp-word{animation:sp-word .7s cubic-bezier(.22,1,.36,1) .65s forwards}
-.sp-root[data-run="true"] .sp-sub{animation:sp-sub .6s ease-out 1.2s forwards}
+.sp-line{position:absolute;right:100%;height:max(2px,calc(var(--h)*.017));border-radius:2px;background:#ff5a1f;transform-origin:right}
+.sp-line-1{top:30%;margin-right:calc(var(--h)*.07);width:calc(var(--h)*.28)}
+.sp-line-2{top:46%;margin-right:calc(var(--h)*.11);width:calc(var(--h)*.5)}
+.sp-line-3{top:62%;margin-right:calc(var(--h)*.04);width:calc(var(--h)*.2)}
+
+.sp-text{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.sp-word{
+  display:block;white-space:nowrap;opacity:0;
+  font-size:calc(var(--h)*.42);font-weight:900;font-style:italic;
+  line-height:1;letter-spacing:-.05em;color:#0a0a0a;
+}
+.sp-a{color:#ff5a1f}
+.sp-sub{
+  display:block;white-space:nowrap;opacity:0;
+  margin-top:calc(var(--h)*.06);
+  font-size:max(10px,calc(var(--h)*.078));font-weight:700;
+  text-transform:uppercase;letter-spacing:.4em;color:#737373;
+}
+
+.sp-barwrap{position:absolute;left:0;right:0;bottom:0;height:3px;background:#f5f5f5}
+.sp-bar{height:100%;background:#ff5a1f;transform-origin:left;transform:scaleX(0)}
+
+.sp-root[data-run="true"] .sp-runner{animation:sp-run 1s cubic-bezier(.16,1,.3,1) forwards}
+.sp-root[data-run="true"] .sp-line{animation:sp-line .5s ease-in .5s forwards}
+.sp-root[data-run="true"] .sp-word{animation:sp-word .7s cubic-bezier(.22,1,.36,1) .6s forwards}
+.sp-root[data-run="true"] .sp-sub{animation:sp-sub .6s ease-out 1.1s forwards}
 .sp-root[data-run="true"] .sp-bar{animation:sp-bar var(--sp-total) linear forwards}
 
 @keyframes sp-run{
-  0%{opacity:0;transform:translateX(-70vw) skewX(-14deg)}
+  0%{opacity:0;transform:translateX(-80vw) skewX(-14deg)}
   12%{opacity:1}
   100%{opacity:1;transform:translateX(0) skewX(0)}
 }
-@keyframes sp-line{
-  from{opacity:1;transform:scaleX(1)}
-  to{opacity:0;transform:scaleX(0)}
-}
+@keyframes sp-line{from{opacity:1;transform:scaleX(1)}to{opacity:0;transform:scaleX(0)}}
 @keyframes sp-word{
   from{opacity:1;clip-path:inset(-12% 100% -12% 0);transform:translateX(-14px)}
   to{opacity:1;clip-path:inset(-12% -12% -12% 0);transform:none}
 }
-@keyframes sp-sub{
-  from{opacity:0;letter-spacing:.15em}
-  to{opacity:1;letter-spacing:.4em}
-}
+@keyframes sp-sub{from{opacity:0;letter-spacing:.15em}to{opacity:1;letter-spacing:.4em}}
 @keyframes sp-bar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 
 @media (prefers-reduced-motion:reduce){
@@ -76,26 +97,13 @@ const CSS = `
 
 export default function SplashScreen({
   src = "/images/shera-runner.png",
-  oncePerSession = true,
 }: {
   src?: string;
-  oncePerSession?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    if (oncePerSession) {
-      try {
-        if (sessionStorage.getItem(SESSION_KEY)) {
-          setPhase("done");
-          return;
-        }
-      } catch {
-        // storage unavailable: just play the splash
-      }
-    }
-
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
@@ -111,17 +119,12 @@ export default function SplashScreen({
       started = true;
       setPhase("run");
       exitTimer = setTimeout(() => setPhase("exit"), showMs);
-      doneTimer = setTimeout(() => {
-        try {
-          sessionStorage.setItem(SESSION_KEY, "1");
-        } catch {}
-        setPhase("done");
-      }, showMs + EXIT_MS);
+      doneTimer = setTimeout(() => setPhase("done"), showMs + EXIT_MS);
     };
 
     const img = imgRef.current;
     if (!img || img.complete) {
-      start(); // already cached (or no image): go
+      start(); // image already cached (or missing): go
     } else {
       img.addEventListener("load", start);
       img.addEventListener("error", start);
@@ -135,7 +138,7 @@ export default function SplashScreen({
       clearTimeout(exitTimer);
       clearTimeout(doneTimer);
     };
-  }, [oncePerSession]);
+  }, []);
 
   // Lock scroll while the splash is on screen
   useEffect(() => {
@@ -151,7 +154,7 @@ export default function SplashScreen({
 
   return (
     <div
-      className="sp-root fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden bg-white"
+      className="sp-root fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-white"
       data-run={phase === "run" || phase === "exit" ? "true" : "false"}
       data-exit={phase === "exit" ? "true" : "false"}
       role="status"
@@ -160,15 +163,12 @@ export default function SplashScreen({
     >
       <style>{CSS}</style>
 
-      {/* Runner on the left, name on the right */}
-      <div className="flex items-center gap-4 px-6 sm:gap-7">
-        {/* Runner */}
-        <div className="sp-runner relative shrink-0">
-          {/* speed lines trail behind the runner */}
-          <span className="sp-line absolute right-full top-[30%] mr-3 h-[3px] w-10 origin-right rounded-sm bg-[#ff5a1f] sm:w-14" />
-          <span className="sp-line absolute right-full top-[46%] mr-5 h-[3px] w-16 origin-right rounded-sm bg-[#ff5a1f] sm:w-24" />
-          <span className="sp-line absolute right-full top-[62%] mr-2 h-[3px] w-8 origin-right rounded-sm bg-[#ff5a1f] sm:w-10" />
-
+      <div className="sp-stage">
+        {/* Runner (left) */}
+        <div className="sp-runner">
+          <span className="sp-line sp-line-1" />
+          <span className="sp-line sp-line-2" />
+          <span className="sp-line sp-line-3" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             ref={imgRef}
@@ -177,24 +177,21 @@ export default function SplashScreen({
             draggable={false}
             fetchPriority="high"
             decoding="async"
-            className="h-28 w-auto select-none sm:h-36 md:h-44"
+            className="sp-img"
           />
         </div>
 
-        {/* Wordmark — same treatment as the navbar logo */}
-        <div className="text-left">
-          <span className="sp-word block text-5xl font-black italic leading-none tracking-tighter text-neutral-950 sm:text-6xl md:text-7xl">
-            SHER<span className="text-[#ff5a1f]">A</span>
+        {/* Name (right) — same treatment as the navbar logo */}
+        <div className="sp-text">
+          <span className="sp-word">
+            SHER<span className="sp-a">A</span>
           </span>
-          <span className="sp-sub mt-2 block text-[10px] font-bold uppercase text-neutral-500 sm:mt-3 sm:text-xs md:text-sm">
-            Sports Wear
-          </span>
+          <span className="sp-sub">Sports Wear</span>
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="absolute inset-x-0 bottom-0 h-[3px] bg-neutral-100">
-        <div className="sp-bar h-full origin-left bg-[#ff5a1f]" />
+      <div className="sp-barwrap">
+        <div className="sp-bar" />
       </div>
     </div>
   );
