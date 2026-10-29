@@ -322,7 +322,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
                     <span className="h-0.5 w-7 bg-brand" />
                     Shera Sports Wear
                   </p>
-                  <h1 className="break-words font-display text-[clamp(1.9rem,8.5vw,2.6rem)] font-black italic uppercase leading-[0.92] tracking-tight lg:text-[3.5rem] xl:text-[4.25rem]">
+                  <h1 className="break-words text-[#ff5a1f] font-display text-[clamp(1.9rem,8.5vw,2.6rem)] font-black italic uppercase leading-[0.92] tracking-tight lg:text-[3.5rem] xl:text-[4.25rem]">
                     {top}
                     {accent && (
                       <>
@@ -392,7 +392,7 @@ function HeroSlider({ slides }: { slides: Slide[] }) {
                   <span
                     className={`mt-1.5 hidden truncate text-[11px] font-semibold transition-colors lg:block ${
                       i === index
-                        ? "text-white"
+                        ? "text-[white]"
                         : "text-white/65 group-hover:text-white"
                     }`}
                   >
