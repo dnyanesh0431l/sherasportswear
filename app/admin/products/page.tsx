@@ -11,7 +11,6 @@ import {
 } from "firebase/firestore";
 import {
   AlertCircle,
-  Boxes,
   Edit3,
   Loader2,
   Package,
@@ -22,6 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +41,7 @@ const formatINR = (paise: number) =>
   `₹${(paise / 100).toLocaleString("en-IN")}`;
 
 export default function ProductsListPage() {
+  const router = useRouter();
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,13 +112,10 @@ export default function ProductsListPage() {
 
     setDeleting(p.id);
     try {
-      // 1. Delete all variants first
       const variantsSnap = await getDocs(
         collection(db, "products", p.id, "variants"),
       );
       await Promise.all(variantsSnap.docs.map((v) => deleteDoc(v.ref)));
-
-      // 2. Delete the product document
       await deleteDoc(doc(db, "products", p.id));
 
       toast.success(`Deleted "${p.name}"`);
@@ -127,6 +125,10 @@ export default function ProductsListPage() {
     } finally {
       setDeleting(null);
     }
+  };
+
+  const openProduct = (id: string) => {
+    router.push(`/admin/products/${id}`);
   };
 
   return (
@@ -241,7 +243,8 @@ export default function ProductsListPage() {
                 {filtered.map((p) => (
                   <tr
                     key={p.id}
-                    className="hover:bg-neutral-50 transition-colors group"
+                    onClick={() => openProduct(p.id)}
+                    className="hover:bg-neutral-50 transition-colors group cursor-pointer"
                   >
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-3">
@@ -300,23 +303,23 @@ export default function ProductsListPage() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5">
-                      <div className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <Link
-                          href={`/admin/products/${p.id}/variants`}
-                          title="Manage Variants"
-                          className="p-1.5 text-neutral-500 hover:bg-neutral-200 hover:text-orange-600 transition-colors"
-                        >
-                          <Boxes className="h-4 w-4" />
-                        </Link>
+                      <div
+                        className="flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Link
                           href={`/admin/products/${p.id}/edit`}
                           title="Edit Product"
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1.5 text-neutral-500 hover:bg-neutral-200 hover:text-orange-600 transition-colors"
                         >
                           <Edit3 className="h-4 w-4" />
                         </Link>
                         <button
-                          onClick={() => handleDelete(p)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(p);
+                          }}
                           disabled={deleting === p.id}
                           title="Delete Product"
                           className="p-1.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 transition-colors disabled:opacity-50"

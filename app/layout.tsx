@@ -4,7 +4,6 @@ import { Anton, Inter } from "next/font/google";
 // import { Toaster } from "sonner";
 import  AppToaster  from "./(storefront)/_components/toaster";
 import SplashScreen from "./(storefront)/_components/splash-screen";
-import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
