@@ -10,21 +10,17 @@ import {
   FolderOpen,
   Image as ImageIcon,
   LayoutDashboard,
-  LayoutGrid,
   Loader2,
   LogOut,
   Maximize2,
   Menu,
   Minimize2,
-  Monitor,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldAlert,
   ShoppingBag,
-  Smartphone,
   Store,
-  Tablet,
   Tags,
   Truck,
   Users,
@@ -63,10 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Storefront",
-    items: [
-      { href: "/admin/banners", label: "Banners", icon: ImageIcon },
-      { href: "/admin/homepage", label: "Homepage", icon: LayoutGrid },
-    ],
+    items: [{ href: "/admin/banners", label: "Banners", icon: ImageIcon }],
   },
   {
     label: "People",
@@ -289,8 +282,6 @@ function Header({
       </nav>
 
       <div className="ml-auto flex items-center gap-2">
-        
-
         <button
           onClick={onToggleFullscreen}
           title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -450,7 +441,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f6f6f7]">
-
       <aside
         className="relative hidden shrink-0 transition-[width] duration-300 ease-out lg:block"
         style={{ width: collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W }}
