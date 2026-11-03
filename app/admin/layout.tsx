@@ -450,7 +450,6 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#f6f6f7]">
-      <Toaster position="top-right" richColors closeButton />
 
       <aside
         className="relative hidden shrink-0 transition-[width] duration-300 ease-out lg:block"
