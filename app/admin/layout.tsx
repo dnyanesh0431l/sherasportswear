@@ -34,7 +34,6 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Toaster } from "sonner";
 
 /* ----------------------------- navigation data ---------------------------- */
 
