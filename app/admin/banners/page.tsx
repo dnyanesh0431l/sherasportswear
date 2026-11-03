@@ -208,7 +208,7 @@ export default function BannersListPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 xl:grid-cols-6 gap-4">
           {filtered.map((b) => (
             <div
               key={b.id}
