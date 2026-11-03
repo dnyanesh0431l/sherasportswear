@@ -50,7 +50,14 @@ type Product = {
   attributes: Record<string, string>;
 };
 
-type Variant = { size: string; color: string; active: boolean };
+// Now includes real inventory per variant
+type Variant = {
+  size: string;
+  color: string;
+  active: boolean;
+  inventory: number;
+};
+
 type Related = {
   id: string;
   name: string;
@@ -64,16 +71,11 @@ type CartItem = { id: string; size: string; color: string; quantity: number };
 
 // ---------------------------------------------------------------------------
 // Layout system — identical to cart + checkout
-//   page:      pt-6 md:pt-8, max-w 1200, gutters px-4 / sm:px-6 / lg:px-8
-//   gap:       24px (gap-6) between every card / column
-//   card:      rounded-xl bg-white p-4 sm:p-5
-//   in-card:   20px (space-y-5) between blocks
 // ---------------------------------------------------------------------------
 const WRAP = "mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8";
 const CARD = "rounded-xl bg-white p-4 sm:p-5";
 const HIDE_SCROLLBAR =
   "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]";
-// Keyboard-only focus indicator (outline, not a ring/shadow)
 const FOCUS =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5a1f]";
 
@@ -123,7 +125,7 @@ const prettyKey = (key: string) => {
 };
 
 // ---------------------------------------------------------------------------
-// Gallery — square images, flat, no borders
+// Gallery
 // ---------------------------------------------------------------------------
 function Gallery({ images, name }: { images: string[]; name: string }) {
   const [active, setActive] = useState(0);
@@ -148,7 +150,6 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
 
   return (
     <div className="lg:sticky lg:top-20 lg:self-start">
-      {/* Mobile: swipe strip, kept inside the page gutters */}
       <div className="relative lg:hidden">
         <div
           ref={trackRef}
@@ -175,7 +176,6 @@ function Gallery({ images, name }: { images: string[]; name: string }) {
         )}
       </div>
 
-      {/* Desktop: thumbnails + hover zoom */}
       <div className="hidden gap-3 lg:flex">
         {images.length > 1 && (
           <div className="relative w-16 shrink-0">
@@ -258,12 +258,6 @@ function FieldTitle({ label, value }: { label: string; value?: string }) {
   );
 }
 
-/**
- * Quantity control
- *  - 44px touch targets
- *  - tap +/-, use ↑/↓ keys, or type a number (clamped to the allowed range)
- *  - select-all on focus so typing replaces the number
- */
 function QuantityControl({
   quantity,
   maxQty,
@@ -506,29 +500,40 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           const vSnap = await getDocs(
             collection(db, "products", d.id, "variants"),
           );
-          vs = vSnap.docs.map((v) => {
-            const x = v.data();
-            return {
-              size: String(x.size ?? ""),
-              color: String(x.color ?? ""),
-              active: x.status !== "inactive" && x.status !== "archived",
-            };
-          });
+          vs = vSnap.docs
+            .map((v) => {
+              const x = v.data();
+              return {
+                size: String(x.size ?? ""),
+                color: String(x.color ?? ""),
+                active: x.status !== "inactive" && x.status !== "archived",
+                inventory:
+                  typeof x.inventoryValue === "number" ? x.inventoryValue : 0,
+              };
+            })
+            // Never expose variants with zero stock as buyable
+            .filter((v) => v.active && v.inventory > 0);
         } catch {}
 
         const unique = (arr: string[]) =>
           Array.from(new Set(arr.filter(Boolean)));
+
+        // Derive colors and sizes from *in-stock* variants only
         const colors: string[] =
           Array.isArray(p.colors) && p.colors.length
-            ? p.colors
+            ? p.colors.filter((c: string) => vs.some((v) => v.color === c))
             : unique(vs.map((v) => v.color));
+
         const sizes: string[] = (
           Array.isArray(p.sizes) && p.sizes.length
-            ? p.sizes
+            ? p.sizes.filter((s: string) => vs.some((v) => v.size === s))
             : unique(vs.map((v) => v.size))
         )
           .slice()
           .sort((a: string, b: string) => sizeRank(a) - sizeRank(b));
+
+        // Real total stock = sum of active variant inventory
+        const totalStock = vs.reduce((sum, v) => sum + v.inventory, 0);
 
         const attributes: Record<string, string> = {};
         if (p.attributes && typeof p.attributes === "object") {
@@ -554,7 +559,13 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           colors,
           sizes,
           categoryId: p.categoryId || "",
-          stock: typeof p.stock === "number" ? p.stock : MAX_QTY,
+          // Falls back to product-level inventoryValue for simple products
+          stock:
+            vs.length > 0
+              ? totalStock
+              : typeof p.inventoryValue === "number"
+                ? p.inventoryValue
+                : 0,
           attributes,
         };
 
@@ -610,11 +621,16 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  // A size+color combination is available only if a matching in-stock variant exists
   const isAvailable = useCallback(
     (size: string, color: string) => {
-      if (!variants.length) return true;
+      if (!variants.length) return false;
       return variants.some(
-        (v) => v.size === size && (!color || v.color === color) && v.active,
+        (v) =>
+          v.active &&
+          v.inventory > 0 &&
+          v.size === size &&
+          (!color || v.color === color),
       );
     },
     [variants],
@@ -622,10 +638,12 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
   const colorHasStock = useCallback(
     (color: string) => {
-      if (!variants.length || !product?.sizes.length) return true;
-      return product.sizes.some((s) => isAvailable(s, color));
+      if (!variants.length) return false;
+      return variants.some(
+        (v) => v.active && v.inventory > 0 && v.color === color,
+      );
     },
-    [variants, product, isAvailable],
+    [variants],
   );
 
   const effectiveSize = selectedSize || "One Size";
@@ -637,6 +655,8 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           item.color === selectedColor,
       )
     : false;
+
+  // Sold out if there is no positive stock at all
   const soldOut = (product?.stock ?? 0) <= 0;
 
   const requireSize = () => {
@@ -671,6 +691,10 @@ export default function ClientProductPage({ slug }: { slug: string }) {
       return;
     }
     if (!requireSize()) return;
+    if (!isAvailable(effectiveSize, selectedColor)) {
+      toast.error("This size is out of stock");
+      return;
+    }
     addCurrentToCart();
     toast.success("Added to cart", {
       description: `${quantity} × ${product.name}${selectedSize ? `, size ${selectedSize}` : ""}`,
@@ -682,6 +706,10 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   const handleBuyNow = () => {
     if (!product || soldOut) return;
     if (!requireSize()) return;
+    if (!isAvailable(effectiveSize, selectedColor)) {
+      toast.error("This size is out of stock");
+      return;
+    }
     if (!itemInCart) addCurrentToCart();
     router.push("/checkout");
   };
@@ -711,7 +739,13 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
   if (loading) return <PageSkeleton />;
 
-  if (!product)
+  // If the product has no sizes AND no colors AND zero stock -> not buyable
+  if (
+    !product ||
+    (product.stock <= 0 &&
+      product.sizes.length === 0 &&
+      product.colors.length === 0)
+  ) {
     return (
       <div className="flex min-h-[75vh] flex-col items-center justify-center bg-white px-4 text-center">
         <div className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-neutral-50">
@@ -734,6 +768,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         </Link>
       </div>
     );
+  }
 
   // ----- Derived values
   const discount = discountPercent(product.mrpPaise, product.basePricePaise);
@@ -770,7 +805,9 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   const buyBtnCls = cx(
     "flex h-12 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors",
     FOCUS,
-    "bg-[#ff5a1f] text-white hover:bg-[#e84912]",
+    soldOut
+      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
+      : "bg-[#ff5a1f] text-white hover:bg-[#e84912]",
   );
   const wishBtnCls = cx(
     "grid h-12 w-12 shrink-0 place-items-center rounded transition-colors",
@@ -1007,7 +1044,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 )}
               </div>
 
-              {/* Desktop actions — one row (mobile uses the sticky bar) */}
+              {/* Desktop actions */}
               <div className="hidden gap-2 lg:flex">
                 <button
                   type="button"
@@ -1128,7 +1165,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                   </Link>
                 )}
               </div>
-              {/* Scroll edge-to-edge inside the card, aligned to its padding */}
               <div
                 className={cx(
                   HIDE_SCROLLBAR,

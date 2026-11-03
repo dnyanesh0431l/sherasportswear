@@ -7,7 +7,6 @@ import {
   ArrowUpRight,
   ChevronRight,
   CreditCard,
-  FolderOpen,
   Image as ImageIcon,
   LayoutDashboard,
   Loader2,
@@ -18,10 +17,10 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings,
   ShieldAlert,
   ShoppingBag,
   Store,
-  Tags,
   Truck,
   Users,
   X,
@@ -44,11 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Catalog",
-    items: [
-      { href: "/admin/products", label: "Products", icon: Package },
-      { href: "/admin/categories", label: "Categories", icon: Tags },
-      { href: "/admin/collections", label: "Collections", icon: FolderOpen },
-    ],
+    items: [{ href: "/admin/products", label: "Products", icon: Package }],
   },
   {
     label: "Commerce",
@@ -65,6 +60,10 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "People",
     items: [{ href: "/admin/customers", label: "Customers", icon: Users }],
+  },
+  {
+    label: "System",
+    items: [{ href: "/admin/settings", label: "Settings", icon: Settings }],
   },
 ];
 
@@ -297,10 +296,19 @@ function Header({
         </button>
 
         <Link
+          href="/admin/settings"
+          title="Settings"
+          aria-label="Settings"
+          className="grid h-8 w-8 place-items-center border border-black/[0.08] bg-white text-neutral-600 transition-colors hover:border-neutral-300 hover:text-neutral-900"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
+
+        <Link
           href="/"
           className="hidden items-center gap-1 bg-[#ff5a1f] px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-100 transition-colors hover:bg-[#ff5a12] sm:inline-flex"
         >
-          <Store className="h-3.5 w-3.5 " />
+          <Store className="h-3.5 w-3.5" />
           Store
           <ArrowUpRight className="h-3 w-3 opacity-70" />
         </Link>

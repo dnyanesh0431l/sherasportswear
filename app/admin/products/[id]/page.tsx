@@ -14,6 +14,8 @@ import {
 } from "firebase/firestore";
 import {
   ArrowLeft,
+  Calendar,
+  Copy,
   Edit3,
   Image as ImageIcon,
   Loader2,
@@ -116,6 +118,15 @@ export default function ProductViewPage() {
     }
   };
 
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(product.id);
+      toast.success("Product ID copied");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-10 text-center">
@@ -165,6 +176,14 @@ export default function ProductViewPage() {
         0,
       )
     : (product.basePricePaise || 0) * totalStock;
+
+  const hasDiscount =
+    product.mrpPaise > product.basePricePaise && product.basePricePaise > 0;
+  const discountPct = hasDiscount
+    ? Math.round(
+        ((product.mrpPaise - product.basePricePaise) / product.mrpPaise) * 100,
+      )
+    : 0;
 
   return (
     <div className="max-w-6xl mx-auto space-y-3 pb-10">
@@ -217,37 +236,34 @@ export default function ProductViewPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        {/* LEFT: images + variants */}
+        {/* LEFT: hero image + details */}
         <div className="lg:col-span-2 space-y-3">
-          {/* Images */}
-          <section className="bg-white border border-neutral-200 p-3 space-y-2.5">
-            <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-              Images
-            </h2>
+          {/* Image hero */}
+          <section className="bg-white border border-neutral-200 p-3">
             {images.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-neutral-400">
+              <div className="flex items-center justify-center gap-2 py-12 text-neutral-400">
                 <ImageIcon className="h-5 w-5" />
                 <span className="text-xs italic">No images uploaded</span>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="relative aspect-square w-full max-w-sm mx-auto border border-neutral-200 bg-neutral-50 overflow-hidden">
+                <div className="relative aspect-[4/3] w-full border border-neutral-200 bg-neutral-50 overflow-hidden">
                   <Image
                     src={images[activeImage] || images[0]}
                     alt={product.name}
                     fill
-                    className="object-cover"
+                    className="object-contain"
                   />
                 </div>
                 {images.length > 1 && (
-                  <div className="flex flex-wrap gap-1.5 justify-center">
+                  <div className="flex flex-wrap gap-1.5">
                     {images.map((url, i) => (
                       <button
                         key={i}
                         onClick={() => setActiveImage(i)}
-                        className={`relative h-14 w-14 border overflow-hidden transition-colors ${
+                        className={`relative h-16 w-16 border overflow-hidden transition-colors ${
                           activeImage === i
-                            ? "border-orange-500"
+                            ? "border-orange-500 ring-1 ring-orange-500"
                             : "border-neutral-200 hover:border-neutral-400"
                         }`}
                       >
@@ -264,6 +280,18 @@ export default function ProductViewPage() {
               </div>
             )}
           </section>
+
+          {/* Short description */}
+          {product.shortDescription && (
+            <section className="bg-white border border-neutral-200 p-3 space-y-1.5">
+              <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
+                Description
+              </h2>
+              <p className="text-xs text-neutral-700 whitespace-pre-wrap leading-relaxed">
+                {product.shortDescription}
+              </p>
+            </section>
+          )}
 
           {/* Variants */}
           {hasVariants && (
@@ -314,10 +342,10 @@ export default function ProductViewPage() {
                         <td className="px-2 py-1 font-mono text-[10px]">
                           {v.sku}
                         </td>
-                        <td className="px-2 py-1 text-right">
+                        <td className="px-2 py-1 text-right font-medium">
                           {formatINR(v.pricePaise)}
                         </td>
-                        <td className="px-2 py-1 text-right text-neutral-500">
+                        <td className="px-2 py-1 text-right text-neutral-400 line-through">
                           {v.mrpPaise > v.pricePaise
                             ? formatINR(v.mrpPaise)
                             : "—"}
@@ -375,74 +403,98 @@ export default function ProductViewPage() {
               </div>
             </section>
           )}
-
-          {/* Short Description */}
-          {product.shortDescription && (
-            <section className="bg-white border border-neutral-200 p-3 space-y-1.5">
-              <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-                Description
-              </h2>
-              <p className="text-xs text-neutral-700 whitespace-pre-wrap">
-                {product.shortDescription}
-              </p>
-            </section>
-          )}
         </div>
 
-        {/* RIGHT: meta */}
+        {/* RIGHT: big, readable info cards */}
         <div className="space-y-3">
-          {/* Pricing summary */}
-          <section className="bg-white border border-neutral-200 p-3 space-y-2">
-            <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-              Pricing
-            </h2>
-            <div className="space-y-1.5 text-[11px]">
-              <SummaryRow
-                label="Selling price"
-                value={formatINR(product.basePricePaise || 0)}
-                emphasize
-              />
-              {product.mrpPaise > product.basePricePaise && (
-                <SummaryRow
-                  label="MRP"
-                  value={formatINR(product.mrpPaise)}
-                  muted
-                />
-              )}
-              <SummaryRow
-                label="Total stock"
-                value={`${totalStock}`}
-                danger={totalStock === 0}
-                warn={totalStock > 0 && totalStock < 5}
-              />
-              <SummaryRow
-                label="Stock value"
-                value={formatINR(totalVariantValue)}
-              />
+          {/* Pricing hero card */}
+          <section className="bg-white border border-neutral-200">
+            <div className="px-4 pt-3 pb-2 border-b border-neutral-200">
+              <h2 className="font-semibold text-sm text-neutral-900">
+                Pricing
+              </h2>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <p className="text-[11px] text-neutral-500 mb-1">
+                  Selling price
+                </p>
+                <p className="text-2xl font-bold text-neutral-900 leading-none">
+                  {formatINR(product.basePricePaise || 0)}
+                </p>
+                {hasDiscount && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-neutral-400 line-through">
+                      {formatINR(product.mrpPaise)}
+                    </span>
+                    <span className="inline-flex items-center text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5">
+                      {discountPct}% OFF
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-neutral-100">
+                <div>
+                  <p className="text-[11px] text-neutral-500 mb-1">
+                    Total stock
+                  </p>
+                  <p
+                    className={`text-lg font-bold leading-none ${
+                      totalStock === 0
+                        ? "text-red-600"
+                        : totalStock < 5
+                          ? "text-amber-600"
+                          : "text-neutral-900"
+                    }`}
+                  >
+                    {totalStock}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-neutral-500 mb-1">
+                    Stock value
+                  </p>
+                  <p className="text-lg font-bold text-neutral-900 leading-none">
+                    {formatINR(totalVariantValue)}
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
           {/* Organization */}
-          <section className="bg-white border border-neutral-200 p-3 space-y-2">
-            <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-              Organization
-            </h2>
-            <div className="space-y-1.5 text-[11px]">
-              <SummaryRow label="Brand" value={product.brandName || "—"} />
-              <SummaryRow label="Gender" value={product.gender || "—"} />
-              <SummaryRow label="Category" value={product.categoryId || "—"} />
-              <div className="pt-1 border-t">
-                <span className="text-neutral-500 block mb-1">Collections</span>
+          <section className="bg-white border border-neutral-200">
+            <div className="px-4 pt-3 pb-2 border-b border-neutral-200">
+              <h2 className="font-semibold text-sm text-neutral-900">
+                Organization
+              </h2>
+            </div>
+            <div className="p-4 space-y-3">
+              <InfoRow label="Brand" value={product.brandName || "—"} />
+              <InfoRow
+                label="Gender"
+                value={
+                  product.gender
+                    ? product.gender.charAt(0).toUpperCase() +
+                      product.gender.slice(1)
+                    : "—"
+                }
+              />
+              <InfoRow label="Category" value={product.categoryId || "—"} />
+
+              <div className="pt-2 border-t border-neutral-100">
+                <p className="text-[11px] text-neutral-500 mb-1.5">
+                  Collections
+                </p>
                 {collectionIds.length === 0 ? (
-                  <span className="text-[11px] text-neutral-400 italic">
-                    None
-                  </span>
+                  <p className="text-[11px] text-neutral-400 italic">None</p>
                 ) : (
                   <div className="flex flex-wrap gap-1">
                     {collectionIds.map((c) => (
                       <span
                         key={c}
-                        className="inline-flex items-center gap-1 text-[10px] font-medium text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5"
                       >
                         <Tag className="h-2.5 w-2.5" />
                         {c}
@@ -454,25 +506,49 @@ export default function ProductViewPage() {
             </div>
           </section>
 
-          {/* Meta */}
-          <section className="bg-white border border-neutral-200 p-3 space-y-2">
-            <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-              Details
-            </h2>
-            <div className="space-y-1.5 text-[11px]">
-              <SummaryRow
+          {/* Details */}
+          <section className="bg-white border border-neutral-200">
+            <div className="px-4 pt-3 pb-2 border-b border-neutral-200">
+              <h2 className="font-semibold text-sm text-neutral-900">
+                Details
+              </h2>
+            </div>
+            <div className="p-4 space-y-3">
+              <InfoRow
                 label="Type"
                 value={hasVariants ? "Has variants" : "Simple"}
               />
-              <SummaryRow label="Product ID" value={product.id} mono />
-              <SummaryRow
-                label="Created"
-                value={formatDate(product.createdAt)}
-              />
-              <SummaryRow
-                label="Updated"
-                value={formatDate(product.updatedAt)}
-              />
+              <div>
+                <p className="text-[11px] text-neutral-500 mb-1">Product ID</p>
+                <div className="flex items-center gap-1.5">
+                  <code className="flex-1 text-[11px] font-mono bg-neutral-50 border border-neutral-200 px-2 py-1 truncate text-neutral-700">
+                    {product.id}
+                  </code>
+                  <button
+                    onClick={copyId}
+                    className="p-1.5 text-neutral-500 hover:bg-neutral-100 border border-neutral-200"
+                    title="Copy ID"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-neutral-100">
+                <div>
+                  <p className="text-[11px] text-neutral-500 mb-1">Created</p>
+                  <p className="text-xs font-medium text-neutral-900 flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-neutral-400" />
+                    {formatDate(product.createdAt)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-neutral-500 mb-1">Updated</p>
+                  <p className="text-xs font-medium text-neutral-900 flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-neutral-400" />
+                    {formatDate(product.updatedAt)}
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -481,39 +557,11 @@ export default function ProductViewPage() {
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-  emphasize,
-  muted,
-  danger,
-  warn,
-  mono,
-}: {
-  label: string;
-  value: string;
-  emphasize?: boolean;
-  muted?: boolean;
-  danger?: boolean;
-  warn?: boolean;
-  mono?: boolean;
-}) {
-  const valueCls = danger
-    ? "text-red-600"
-    : warn
-      ? "text-amber-600"
-      : muted
-        ? "text-neutral-400 line-through"
-        : emphasize
-          ? "text-neutral-900 font-semibold"
-          : "text-neutral-900 font-medium";
-
+function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-neutral-500 shrink-0">{label}</span>
-      <span
-        className={`${valueCls} text-right truncate ${mono ? "font-mono text-[10px]" : ""}`}
-      >
+      <span className="text-xs text-neutral-500">{label}</span>
+      <span className="text-sm font-medium text-neutral-900 text-right truncate">
         {value}
       </span>
     </div>
@@ -523,7 +571,6 @@ function SummaryRow({
 function formatDate(ts: any): string {
   if (!ts) return "—";
   try {
-    // Firestore Timestamp has .toDate()
     const d = typeof ts.toDate === "function" ? ts.toDate() : new Date(ts);
     return d.toLocaleDateString("en-IN", {
       day: "2-digit",
