@@ -672,6 +672,18 @@ async function main() {
   );
 
   console.log("\n👕 Seeding products & variants…");
+  type VariantInfo = {
+    productId: string;
+    variantId: string;
+    sku: string;
+    name: string;
+    size: string;
+    color: string;
+    pricePaise: number;
+    mrpPaise: number;
+    imageUrl: string;
+    inventoryValue: number;
+  };
   const variantPool: VariantInfo[] = [];
   for (const p of products) {
     const { sizes, colors, images, ...rest } = p;

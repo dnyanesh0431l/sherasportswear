@@ -4,6 +4,7 @@ import Link from "next/link";
 import { StorefrontProviders } from "./../providers";
 import { StorefrontHeader } from "./_components/header";
 import "./globals.css";
+
 const poppins = Poppins({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800", "900"],
@@ -35,19 +36,20 @@ const FOOTER_COLUMNS = [
       ["Track Order", "/orders"],
       ["My Account", "/account"],
       ["Contact Us", "/contact"],
-      ["Shipping", "/shipping"],
-      ["Returns", "/returns"],
+      ["Pricing & Shipping", "/pricing"],
+      ["Returns & Refunds", "/refund-policy"],
     ],
   },
   {
     title: "Company",
     links: [
-      ["About", "/about"],
-      ["Privacy", "/privacy"],
-      ["Terms", "/terms"],
+      ["About Us", "/about"],
+      ["Terms & Conditions", "/terms"],
+      ["Privacy Policy", "/privacy"],
+      ["Refund & Cancellation", "/refund-policy"],
     ],
   },
-];
+] as const;
 
 export default function StorefrontLayout({
   children,
@@ -84,29 +86,52 @@ export default function StorefrontLayout({
 
         <main className="flex-1 pb-20 md:pb-0">{children}</main>
 
-        <footer className="mt-8 bg-neutral-950 pb-20 text-neutral-300 md:mt-10 md:pb-0">
+        <footer
+          className="mt-8 bg-neutral-950 pb-20 text-neutral-300 md:mt-10 md:pb-0"
+          aria-labelledby="footer-heading"
+        >
+          <h2 id="footer-heading" className="sr-only">
+            Site footer
+          </h2>
+
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
             <div className="grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
+              {/* Brand block */}
               <div className="col-span-2 md:col-span-1">
-                <div className="font-display text-xl font-black italic tracking-tighter text-white">
-                  SHER<span className="text-brand">A</span>
-                </div>
-                <div className="mt-0.5 text-[9px] font-semibold tracking-[0.3em] text-brand">
-                  SPORTS WEAR
-                </div>
+                <Link
+                  href="/"
+                  className="inline-block transition-opacity hover:opacity-80"
+                  aria-label="Shera Sports Wear — home"
+                >
+                  <div className="font-display text-xl font-black italic tracking-tighter text-white">
+                    SHER<span className="text-brand">A</span>
+                  </div>
+                  <div className="mt-0.5 text-[9px] font-semibold tracking-[0.3em] text-brand">
+                    SPORTS WEAR
+                  </div>
+                </Link>
                 <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-400">
                   Premium performance sportswear engineered for those who move.
                 </p>
+
+                {/* Contact shortcut */}
+                <a
+                  href="mailto:support@sherasportswear.com"
+                  className="mt-3 inline-block text-[13px] font-medium text-neutral-300 underline-offset-4 hover:text-brand hover:underline"
+                >
+                  support@sherasportswear.com
+                </a>
               </div>
 
+              {/* Link columns */}
               {FOOTER_COLUMNS.map((col) => (
-                <div key={col.title}>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+                <nav key={col.title} aria-label={col.title}>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
                     {col.title}
-                  </h4>
+                  </h3>
                   <ul className="mt-3 space-y-1.5 text-[13px]">
                     {col.links.map(([label, href]) => (
-                      <li key={href}>
+                      <li key={`${col.title}-${href}`}>
                         <Link
                           href={href}
                           className="transition-colors hover:text-brand"
@@ -116,12 +141,15 @@ export default function StorefrontLayout({
                       </li>
                     ))}
                   </ul>
-                </div>
+                </nav>
               ))}
             </div>
 
             <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-neutral-800 pt-4 text-[11px] text-neutral-500 sm:flex-row">
-              <p>© 2026 Shera Sports Wear. All rights reserved.</p>
+              <p>
+                © 2026 Shera Sports Wear. All rights
+                reserved.
+              </p>
               <p className="text-[9px] uppercase tracking-widest">
                 Built to move.
               </p>
