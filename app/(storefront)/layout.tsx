@@ -14,7 +14,6 @@ const poppins = Poppins({
 });
 
 const ANNOUNCEMENTS = [
-  "Free shipping on orders above ₹999",
   "Easy returns",
   "Premium quality",
 ];

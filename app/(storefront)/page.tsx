@@ -189,11 +189,7 @@ function splitTitle(title: string): [string, string] {
 
 const FEATURES = [
   { icon: ShieldCheck, title: "Premium quality", sub: "Built for performance" },
-  {
-    icon: Truck,
-    title: "Free delivery over ₹999",
-    sub: "Shipped across India",
-  },
+ 
   { icon: RotateCcw, title: "Easy returns", sub: "Hassle-free exchanges" },
   {
     icon: Headphones,

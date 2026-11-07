@@ -5,13 +5,12 @@ import { PageHero } from "../_components/pages/PageHero";
 export const metadata: Metadata = {
   title: "Pricing & Shipping — Shera Sports Wear",
   description:
-    "Transparent pricing, free shipping over ₹999, bulk & team discounts, and GST-inclusive totals. No hidden fees.",
+    "Transparent pricing, bulk & team discounts, and GST-inclusive totals. No hidden fees.",
 };
 
 const shipping = [
   { name: "Standard", price: "₹79", eta: "4–6 business days", note: "Pan-India" },
   { name: "Express", price: "₹149", eta: "2–3 business days", note: "Metro cities" },
-  { name: "Free shipping", price: "₹0", eta: "4–6 business days", note: "Orders over ₹999" },
   { name: "Cash on delivery", price: "₹49", eta: "5–7 business days", note: "Select PIN codes" },
 ];
 
@@ -27,7 +26,7 @@ export default function PricingPage() {
       <PageHero
         eyebrow="Pricing"
         title="Honest pricing. No surprises."
-        description="Every price you see on Shera is GST-inclusive. Shipping is flat-rate across India, free over ₹999, and fully itemised at checkout."
+        description="Every price you see on Shera is GST-inclusive, and fully itemised at checkout."
       />
 
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 space-y-16">
