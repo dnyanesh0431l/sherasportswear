@@ -162,7 +162,7 @@ type SavedAddress = AddressFields & { id: string; isDefault: boolean };
 // ---------------------------------------------------------------------------
 // Constants & helpers
 // ---------------------------------------------------------------------------
-const SHIPPING_FEE_PAISE = 8000; // ₹80
+const SHIPPING_FEE_PAISE = 0; // ₹80
 const STORE_NAME = "SHERA";
 
 const INDIAN_STATES = [

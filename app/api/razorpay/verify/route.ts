@@ -1,19 +1,31 @@
 // app/api/razorpay/verify/route.ts
-import crypto from "crypto";
-import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import Razorpay from "razorpay";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-// ---------- Firebase Admin init (idempotent) ----------
 function getAdminDb() {
   if (!getApps().length) {
+    const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+    const privateKeyRaw = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+
+    if (!projectId || !clientEmail || !privateKeyRaw) {
+      throw new Error(
+        "Missing Firebase Admin env vars: FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL, FIREBASE_ADMIN_PRIVATE_KEY",
+      );
+    }
+
+    // Strip optional surrounding quotes (defensive — .env quotes are already
+    // removed by Next.js but kept for safety when set on Vercel).
+    const privateKey = privateKeyRaw
+      .replace(/^["']/, "")
+      .replace(/["']$/, "")
+      .replace(/\\n/g, "\n");
+
     initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      }),
+      credential: cert({ projectId, clientEmail, privateKey }),
     });
   }
   return getFirestore();
@@ -33,7 +45,8 @@ type Body = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return NextResponse.json(
@@ -104,7 +117,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ---------- 3. Confirm the order in Firestore (server-side) ----------
+    // ---------- 3. Confirm the order in Firestore ----------
     const db = getAdminDb();
     const ordersSnap = await db
       .collection("orders")
@@ -125,7 +138,6 @@ export async function POST(req: Request) {
     const orderDoc = ordersSnap.docs[0];
     const orderData = orderDoc.data();
 
-    // Amount sanity check
     if (Number(orderData.totalPaise) !== amountPaise) {
       console.error("[verify] amount mismatch", {
         orderId: orderDoc.id,
@@ -138,11 +150,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // If already confirmed (webhook race), skip writes but still send email
     const alreadyConfirmed = orderData.paymentStatus === "captured";
 
+    // ---------- 4. Mark order + payment as captured ----------
     if (!alreadyConfirmed) {
-      // ---------- 4. Atomically mark order + payment as captured ----------
       const paymentId = orderData.paymentId as string;
       const batch = db.batch();
 
@@ -167,9 +178,7 @@ export async function POST(req: Request) {
       await batch.commit();
     }
 
-    // ---------- 5. Send order confirmation email (fire-and-forget) ----------
-    // Only send if this is the first confirmation, to avoid duplicate emails
-    // when webhook + verify both run.
+    // ---------- 5. Send confirmation email (fire-and-forget) ----------
     if (!alreadyConfirmed) {
       const siteUrl =
         process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
