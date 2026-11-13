@@ -164,7 +164,6 @@ type SavedAddress = AddressFields & { id: string; isDefault: boolean };
 // Constants & helpers
 // ---------------------------------------------------------------------------
 const SHIPPING_FEE_PAISE = 8000; // ₹80
-const TAX_RATE = 0.05;
 const STORE_NAME = "SHERA";
 
 const INDIAN_STATES = [
@@ -495,14 +494,12 @@ function OrderSummary({
   subtotalPaise,
   savingsPaise,
   shippingPaise,
-  taxPaise,
   totalPaise,
 }: {
   items: CartItem[];
   subtotalPaise: number;
   savingsPaise: number;
   shippingPaise: number;
-  taxPaise: number;
   totalPaise: number;
 }) {
   return (
@@ -585,12 +582,6 @@ function OrderSummary({
           <span>Shipping</span>
           <span className="font-semibold tabular-nums text-neutral-900">
             {formatINR(shippingPaise)}
-          </span>
-        </div>
-        <div className="flex justify-between text-neutral-600">
-          <span>Tax (5%)</span>
-          <span className="font-semibold tabular-nums text-neutral-900">
-            {formatINR(taxPaise)}
           </span>
         </div>
         <div className="mt-1 flex items-end justify-between border-t border-neutral-100 pt-3">
@@ -759,8 +750,7 @@ function CheckoutBody() {
   );
   const discountPaise = 0;
   const shippingPaise = SHIPPING_FEE_PAISE; // flat ₹80 on every order
-  const taxPaise = Math.round((subtotalPaise - discountPaise) * TAX_RATE);
-  const totalPaise = subtotalPaise - discountPaise + shippingPaise + taxPaise;
+  const totalPaise = subtotalPaise - discountPaise + shippingPaise;
 
   // ----- Effective shipping address
   const usingSaved = addressMode === "saved" && savedAddresses.length > 0;
@@ -949,7 +939,6 @@ function CheckoutBody() {
         subtotalPaise,
         discountPaise,
         shippingPaise,
-        taxPaise,
         totalPaise,
         paymentId,
         razorpayOrderId,
@@ -1112,7 +1101,6 @@ function CheckoutBody() {
     subtotalPaise,
     savingsPaise,
     shippingPaise,
-    taxPaise,
     totalPaise,
   };
 
