@@ -321,6 +321,26 @@ export default function OrderDetailPage() {
         fulfillmentStatus,
         updatedAt: serverTimestamp(),
       });
+
+      // Email notification (non-blocking — order update already succeeded)
+      if (order?.email) {
+        fetch(`/api/orders/${id}/notify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: order.email,
+            orderNumber: order.orderNumber,
+            status,
+            paymentStatus,
+            fulfillmentStatus,
+            totalPaise: order.totalPaise,
+            customerName: order.shippingAddress?.fullName,
+          }),
+        }).catch((err) => {
+          console.error("notify failed", err);
+        });
+      }
+
       toast.success("Order status updated");
     } catch (e) {
       toast.error((e as Error)?.message || "Update failed");

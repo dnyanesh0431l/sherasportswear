@@ -94,7 +94,9 @@ function Pill({ value }: { value: string | null }) {
           ? "bg-blue-50 text-blue-700"
           : s === "cancelled" || s === "failed" || s === "returned"
             ? "bg-red-50 text-red-700"
-            : "bg-neutral-100 text-neutral-600";
+            : s === "refunded"
+              ? "bg-purple-50 text-purple-700"
+              : "bg-neutral-100 text-neutral-600";
   return (
     <span
       className={`inline-flex text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${cls}`}
@@ -195,12 +197,38 @@ export default function MyOrderDetailPage({ orderId }: { orderId: string }) {
     );
   }
 
-  const isCancelled = (order.status || "").toLowerCase() === "cancelled";
+  const status = (order.status || "").toLowerCase();
+  const paymentStatus = (order.paymentStatus || "").toLowerCase();
+  const isCancelled = status === "cancelled";
+  const isRefunded =
+    status === "refunded" ||
+    paymentStatus === "refunded" ||
+    paymentStatus === "partially_refunded";
 
   return (
     <div className="space-y-4">
-      {/* Refund notice — shown only if the order was cancelled */}
-      {isCancelled && (
+      {/* Refunded notice — takes priority */}
+      {isRefunded ? (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2.5 text-xs text-purple-900"
+        >
+          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-purple-600" />
+          <p>
+            <span className="font-bold">
+              {paymentStatus === "partially_refunded"
+                ? "Partial refund issued."
+                : "Amount refunded."}
+            </span>{" "}
+            {paymentStatus === "partially_refunded"
+              ? "A partial amount has been refunded to your original payment method."
+              : "Your amount has been refunded to the original payment method."}{" "}
+            It may take{" "}
+            <span className="font-semibold">5 to 7 working days</span> to
+            reflect in your account.
+          </p>
+        </div>
+      ) : isCancelled ? (
         <div
           role="status"
           className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900"
@@ -213,7 +241,7 @@ export default function MyOrderDetailPage({ orderId }: { orderId: string }) {
             original payment method.
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Header - Compact */}
       <div className="flex items-center gap-3 flex-wrap border-b border-neutral-200 pb-3">

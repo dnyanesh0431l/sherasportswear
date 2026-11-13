@@ -23,8 +23,8 @@ const channels = [
   },
   {
     label: "Call / WhatsApp",
-    value: "+91 00000 00000",
-    href: "tel:+910000000000",
+    value: "+91 9022354872",
+    href: "tel:+919022354872",
     note: "Mon–Sat, 10am–7pm IST",
   },
   {
