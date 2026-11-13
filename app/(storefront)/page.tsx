@@ -5,8 +5,6 @@ import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   ArrowRight,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Headphones,
   Heart,
   RefreshCw,
@@ -14,7 +12,6 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Tag,
-  Truck,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { db } from "../../lib/firebase/client";
 import { useWishlist } from "./../context/wishlist-context";
+import { HeroSlider, type HeroSlide } from "./_components/HeroSlider";
 
 // ---------------------------------------------------------------------------
 // Types — aligned with scripts/seed.ts
@@ -77,11 +75,6 @@ type Collection = {
 
 type Section = { id: string; type: string; isActive: boolean };
 
-type Slide = Pick<
-  Banner,
-  "id" | "title" | "subtitle" | "imageUrl" | "ctaLabel" | "ctaUrl"
->;
-
 type HomepageData = {
   banners: Banner[];
   products: Product[];
@@ -113,7 +106,6 @@ const HIDE_SCROLLBAR =
   "[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]";
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
-const SLIDE_MS = 6500;
 const PAGE_SIZE = 20;
 
 const EMPTY_FILTERS: Filters = {
@@ -148,7 +140,6 @@ const GENDER_LABEL: Record<string, string> = {
   unisex: "Unisex",
 };
 
-// Sizes from seed: numeric shoe sizes, apparel (S/M, L/XL), One Size
 const SIZE_ORDER = [
   "XS",
   "S",
@@ -176,20 +167,8 @@ function discountPercent(mrp: number, price: number): number {
   return Math.round(((mrp - price) / mrp) * 100);
 }
 
-function splitTitle(title: string): [string, string] {
-  const lines = title.split(/\n|\|/).map((s) => s.trim());
-  if (lines.length > 1) return [lines[0], lines.slice(1).join(" ")];
-  const words = title.trim().split(/\s+/);
-  if (words.length <= 1) return [title, ""];
-  if (words.length <= 3)
-    return [words.slice(0, -1).join(" "), words[words.length - 1]];
-  const mid = Math.ceil(words.length / 2);
-  return [words.slice(0, mid).join(" "), words.slice(mid).join(" ")];
-}
-
 const FEATURES = [
   { icon: ShieldCheck, title: "Premium quality", sub: "Built for performance" },
- 
   { icon: RotateCcw, title: "Easy returns", sub: "Hassle-free exchanges" },
   {
     icon: Headphones,
@@ -199,7 +178,7 @@ const FEATURES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Color parsing — seed uses compound names ("Mist/Aqua", "Wht-Blk", "Blk/Sky")
+// Color parsing
 // ---------------------------------------------------------------------------
 const COLOR_TOKENS: { match: RegExp; hex: string }[] = [
   { match: /^black|^blk/, hex: "#111111" },
@@ -235,7 +214,6 @@ function colorHex(name: string): string {
   return "#d4d4d4";
 }
 
-// Filter matching. `skip` leaves one group out so option counts stay accurate.
 function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
   if (
     skip !== "categories" &&
@@ -285,196 +263,6 @@ function NoScrollbars() {
       html, body, * { scrollbar-width: none; -ms-overflow-style: none; }
       html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar { display: none; width: 0; height: 0; }
     `}</style>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Hero slider
-// ---------------------------------------------------------------------------
-function HeroSlider({ slides }: { slides: Slide[] }) {
-  const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const touchX = useRef<number | null>(null);
-  const count = slides.length;
-
-  const go = useCallback(
-    (dir: number) => setIndex((i) => (i + dir + count) % count),
-    [count],
-  );
-
-  if (!count) return null;
-
-  return (
-    <div
-      className="relative isolate h-[70svh] w-full overflow-hidden bg-neutral-950 text-white lg:h-[clamp(460px,72vh,640px)]"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-      onTouchStart={(e) => {
-        touchX.current = e.touches[0].clientX;
-        setPaused(true);
-      }}
-      onTouchEnd={(e) => {
-        setPaused(false);
-        if (touchX.current === null) return;
-        const dx = e.changedTouches[0].clientX - touchX.current;
-        touchX.current = null;
-        if (count > 1 && Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
-      }}
-      role="region"
-      aria-roledescription="carousel"
-      aria-label="Featured offers"
-    >
-      <style>{`
-        @keyframes heroProgress { from { transform: scaleX(0) } to { transform: scaleX(1) } }
-        .hero-progress { animation-name: heroProgress; animation-timing-function: linear; animation-fill-mode: forwards; }
-        .hero-pad { padding-left: 1.25rem; padding-right: 1.25rem; }
-        @media (min-width: 640px) { .hero-pad { padding-left: 2rem; padding-right: 2rem; } }
-        @media (min-width: 1024px) { .hero-pad { padding-left: max(2rem, calc((100vw - 1440px) / 2 + 2rem)); padding-right: 2.5rem; } }
-        @media (prefers-reduced-motion: reduce) { .hero-progress { animation: none; transform: none; } }
-      `}</style>
-
-      <div className="grid h-full grid-cols-1 grid-rows-1">
-        {slides.map((s, i) => {
-          const active = i === index;
-          const [top, accent] = splitTitle(s.title);
-          return (
-            <div
-              key={s.id}
-              aria-hidden={!active}
-              className={`col-start-1 row-start-1 flex min-h-0 flex-col transition-opacity duration-700 lg:grid lg:grid-cols-[40%_60%] ${
-                active
-                  ? "z-10 opacity-100"
-                  : "pointer-events-none z-0 opacity-0"
-              }`}
-            >
-              <div className="relative order-first shrink-0 basis-[46%] overflow-hidden lg:order-last lg:h-full lg:basis-auto">
-                {s.imageUrl && (
-                  <img
-                    src={s.imageUrl}
-                    alt=""
-                    fetchPriority={i === 0 ? "high" : "auto"}
-                    loading={i === 0 ? "eager" : "lazy"}
-                    className={`absolute inset-0 h-full w-full object-cover transition-transform duration-[1400ms] ease-out ${
-                      active ? "scale-100" : "scale-[1.06]"
-                    }`}
-                  />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-neutral-950 lg:bg-gradient-to-r lg:from-neutral-950 lg:via-neutral-950/10 lg:to-transparent" />
-              </div>
-
-              <div className="hero-pad relative flex min-h-0 flex-1 flex-col justify-center pb-10 lg:pb-12">
-                <div
-                  className={`max-w-lg transition-all delay-150 duration-700 ${
-                    active
-                      ? "translate-y-0 opacity-100"
-                      : "translate-y-4 opacity-0"
-                  }`}
-                >
-                  <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-white/90 lg:mb-3 lg:text-xs">
-                    <span className="h-0.5 w-7 bg-brand" />
-                    Shera Sports Wear
-                  </p>
-                  <h1 className="break-words text-[#ff5a1f] font-display text-[clamp(1.9rem,8.5vw,2.6rem)] font-black italic uppercase leading-[0.92] tracking-tight lg:text-[3.5rem] xl:text-[4.25rem]">
-                    {top}
-                    {accent && (
-                      <>
-                        <br />
-                        <span className="text-brand">{accent}</span>
-                      </>
-                    )}
-                  </h1>
-                  {s.subtitle && (
-                    <p className="mt-2.5 line-clamp-2 max-w-md text-[13px] font-medium leading-snug text-white/90 lg:mt-4 lg:text-base lg:leading-relaxed">
-                      {s.subtitle}
-                    </p>
-                  )}
-                  <div className="mt-4 flex flex-wrap items-center gap-2.5 lg:mt-6 lg:gap-3">
-                    <Link
-                      href={s.ctaUrl || "/products"}
-                      tabIndex={active ? 0 : -1}
-                      className={`inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-extrabold text-neutral-950 transition-colors hover:bg-brand-hover lg:px-6 lg:py-3 ${FOCUS}`}
-                    >
-                      {s.ctaLabel || "Shop now"}
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                    <Link
-                      href="/collections"
-                      tabIndex={active ? 0 : -1}
-                      className={`inline-flex items-center rounded-md border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white hover:text-neutral-950 lg:px-6 lg:py-3 ${FOCUS}`}
-                    >
-                      All collections
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {count > 1 && (
-        <>
-          <div className="hero-pad absolute inset-x-0 bottom-4 z-20 lg:right-[60%]">
-            <div className="flex gap-2">
-              {slides.map((s, i) => (
-                <button
-                  key={s.id}
-                  onClick={() => setIndex(i)}
-                  aria-label={`Go to slide ${i + 1}: ${s.title}`}
-                  aria-current={i === index}
-                  className={`group min-w-0 flex-1 text-left ${FOCUS}`}
-                >
-                  <span className="relative block h-[3px] overflow-hidden rounded-full bg-white/30">
-                    {i < index && (
-                      <span className="absolute inset-0 bg-white/70" />
-                    )}
-                    {i === index && (
-                      <span
-                        key={index}
-                        className="hero-progress absolute inset-0 origin-left bg-brand"
-                        style={{
-                          animationDuration: `${SLIDE_MS}ms`,
-                          animationPlayState: paused ? "paused" : "running",
-                        }}
-                        onAnimationEnd={() => go(1)}
-                      />
-                    )}
-                  </span>
-                  <span
-                    className={`mt-1.5 hidden truncate text-[11px] font-semibold transition-colors lg:block ${
-                      i === index
-                        ? "text-[white]"
-                        : "text-white/65 group-hover:text-white"
-                    }`}
-                  >
-                    {s.title}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="absolute bottom-4 right-6 z-20 hidden gap-2 lg:flex">
-            <button
-              onClick={() => go(-1)}
-              aria-label="Previous slide"
-              className={`grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-white hover:text-neutral-950 ${FOCUS}`}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => go(1)}
-              aria-label="Next slide"
-              className={`grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-white hover:text-neutral-950 ${FOCUS}`}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
@@ -1015,11 +803,6 @@ function FilterSheet({
 
 // ---------------------------------------------------------------------------
 // Showcase: collection tabs + attribute filters + sort + load more
-//
-// Tab strategy: one tab per seeded collection ("new-arrivals", "carbon-racing",
-// "bestsellers") — no hardcoded duplicates. A trailing "All products" tab is
-// added if the collections don't already cover everything, so users can always
-// reach the full catalogue from this section.
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
@@ -1629,7 +1412,8 @@ export default function StorefrontHomePage() {
   // ---- Hero slides
   const heroFirst = data.banners.filter((b) => b.placement === "home_hero");
   const others = data.banners.filter((b) => b.placement !== "home_hero");
-  const heroSlides: Slide[] = [...heroFirst, ...others].map((b) => ({
+
+  const heroSlides: HeroSlide[] = [...heroFirst, ...others].map((b) => ({
     id: b.id,
     title: b.title,
     subtitle: b.subtitle,
@@ -1637,6 +1421,7 @@ export default function StorefrontHomePage() {
     ctaLabel: b.ctaLabel,
     ctaUrl: b.ctaUrl,
   }));
+
   if (!heroSlides.length) {
     heroSlides.push({
       id: "fallback-hero",
@@ -1664,15 +1449,13 @@ export default function StorefrontHomePage() {
     if (p.brandId && p.brandName) brandNames[p.brandId] = p.brandName;
   });
 
-  // ---- Showcase tabs — one per collection, no hardcoded duplicates.
+  // ---- Showcase tabs
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
   const tabs: Tab[] = [];
 
   data.collections.forEach((col) => {
     const list = data.products.filter((p) => p.collectionIds.includes(col.id));
     if (list.length) {
-      // Curated collections like "bestsellers" are naturally ranked by discount
-      // since the seed no longer stores soldCount.
       const sorted =
         col.id === "bestsellers"
           ? [...list].sort((a, b) => disc(b) - disc(a))
@@ -1686,8 +1469,6 @@ export default function StorefrontHomePage() {
     }
   });
 
-  // Add an "All products" tab at the end so users can always browse everything
-  // from this section, even if collections don't cover all products.
   const coveredIds = new Set(tabs.flatMap((t) => t.products.map((p) => p.id)));
   const uncovered = data.products.filter((p) => !coveredIds.has(p.id));
   if (uncovered.length || tabs.length === 0) {
