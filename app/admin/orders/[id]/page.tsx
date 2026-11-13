@@ -94,13 +94,21 @@ type Shipment = {
   deliveredAt: Date | null;
 };
 
+// ---------------------------------------------------------------------------
+// Status enums — keep in sync with server / client order flows
+// ---------------------------------------------------------------------------
+
 const ORDER_STATUSES = [
   "pending",
+  "pending_payment",
   "confirmed",
   "processing",
   "shipped",
+  "out_for_delivery",
   "delivered",
   "cancelled",
+  "returned",
+  "refunded",
 ] as const;
 
 const PAYMENT_STATUSES = [
@@ -109,17 +117,31 @@ const PAYMENT_STATUSES = [
   "captured",
   "failed",
   "cancelled",
+  "refunded",
+  "partially_refunded",
 ] as const;
 
-const FULFILLMENT_STATUSES = ["unfulfilled", "partial", "fulfilled"] as const;
+const FULFILLMENT_STATUSES = [
+  "unfulfilled",
+  "partial",
+  "fulfilled",
+  "returned",
+] as const;
 
 const SHIPMENT_STATUSES = [
   "pending",
+  "label_created",
+  "picked_up",
   "in_transit",
   "out_for_delivery",
   "delivered",
+  "failed",
   "returned",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Utils
+// ---------------------------------------------------------------------------
 
 function toDate(v: any): Date | null {
   if (!v) return null;
@@ -131,23 +153,47 @@ function toDate(v: any): Date | null {
 const formatINR = (paise: number | undefined | null) =>
   typeof paise === "number" ? `₹${(paise / 100).toLocaleString("en-IN")}` : "—";
 
+// Nicely format any snake_case status for display.
+const pretty = (s: string) =>
+  s
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
 function Pill({ value }: { value: string | null }) {
   const s = (value || "unknown").toLowerCase();
   const cls =
-    s === "delivered" || s === "captured" || s === "paid" || s === "confirmed"
+    s === "delivered" ||
+    s === "captured" ||
+    s === "paid" ||
+    s === "confirmed" ||
+    s === "fulfilled"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : s === "pending" || s === "processing" || s === "authorized"
+      : s === "pending" ||
+          s === "pending_payment" ||
+          s === "processing" ||
+          s === "authorized" ||
+          s === "unfulfilled" ||
+          s === "partial"
         ? "bg-amber-50 text-amber-700 border-amber-200"
-        : s === "shipped" || s === "in_transit" || s === "out_for_delivery"
+        : s === "shipped" ||
+            s === "in_transit" ||
+            s === "out_for_delivery" ||
+            s === "picked_up" ||
+            s === "label_created"
           ? "bg-blue-50 text-blue-700 border-blue-200"
-          : s === "cancelled" || s === "failed" || s === "returned"
+          : s === "cancelled" ||
+              s === "failed" ||
+              s === "returned" ||
+              s === "refunded" ||
+              s === "partially_refunded"
             ? "bg-red-50 text-red-700 border-red-200"
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
     <span
       className={`inline-flex text-[10px] uppercase tracking-wide font-medium px-2 py-0.5 border ${cls}`}
     >
-      {value || "—"}
+      {value ? pretty(value) : "—"}
     </span>
   );
 }
@@ -313,6 +359,7 @@ export default function OrderDetailPage() {
         updatedAt: serverTimestamp(),
       };
       if (
+        newShipStatus === "picked_up" ||
         newShipStatus === "in_transit" ||
         newShipStatus === "out_for_delivery"
       ) {
@@ -327,17 +374,25 @@ export default function OrderDetailPage() {
       if (
         order &&
         (order.status === "pending" ||
+          order.status === "pending_payment" ||
           order.status === "confirmed" ||
           order.status === "processing") &&
-        newShipStatus !== "pending"
+        newShipStatus !== "pending" &&
+        newShipStatus !== "label_created"
       ) {
+        const nextOrderStatus =
+          newShipStatus === "delivered"
+            ? "delivered"
+            : newShipStatus === "out_for_delivery"
+              ? "out_for_delivery"
+              : "shipped";
         await updateDoc(doc(db, "orders", id), {
-          status: "shipped",
+          status: nextOrderStatus,
           fulfillmentStatus:
             newShipStatus === "delivered" ? "fulfilled" : "partial",
           updatedAt: serverTimestamp(),
         });
-        setStatus("shipped");
+        setStatus(nextOrderStatus);
         setFulfillmentStatus(
           newShipStatus === "delivered" ? "fulfilled" : "partial",
         );
@@ -437,6 +492,7 @@ export default function OrderDetailPage() {
         <div className="flex items-center gap-2">
           <Pill value={order.status} />
           <Pill value={order.paymentStatus} />
+          <Pill value={order.fulfillmentStatus} />
         </div>
       </div>
 
@@ -562,7 +618,7 @@ export default function OrderDetailPage() {
                 >
                   {ORDER_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                      {pretty(s)}
                     </option>
                   ))}
                 </select>
@@ -575,7 +631,7 @@ export default function OrderDetailPage() {
                 >
                   {PAYMENT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                      {pretty(s)}
                     </option>
                   ))}
                 </select>
@@ -588,7 +644,7 @@ export default function OrderDetailPage() {
                 >
                   {FULFILLMENT_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s.charAt(0).toUpperCase() + s.slice(1)}
+                      {pretty(s)}
                     </option>
                   ))}
                 </select>
@@ -784,7 +840,7 @@ export default function OrderDetailPage() {
               >
                 {SHIPMENT_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s.replace("_", " ")}
+                    {pretty(s)}
                   </option>
                 ))}
               </select>

@@ -15,7 +15,11 @@ export function ContactForm() {
     setError(null);
     setStatus("sending");
 
-    const form = new FormData(e.currentTarget);
+    // ✅ Capture the form element BEFORE any await.
+    // React clears event.currentTarget after the event handler yields.
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
+
     const payload = {
       name: String(form.get("name") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
@@ -44,7 +48,7 @@ export function ContactForm() {
         createdAt: serverTimestamp(),
       });
       setStatus("success");
-      e.currentTarget.reset();
+      formEl.reset(); // ✅ use the captured reference
     } catch (err) {
       setStatus("error");
       setError(

@@ -195,8 +195,26 @@ export default function MyOrderDetailPage({ orderId }: { orderId: string }) {
     );
   }
 
+  const isCancelled = (order.status || "").toLowerCase() === "cancelled";
+
   return (
     <div className="space-y-4">
+      {/* Refund notice — shown only if the order was cancelled */}
+      {isCancelled && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900"
+        >
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
+          <p>
+            <span className="font-bold">Refund in progress.</span> Your amount
+            will be refunded within{" "}
+            <span className="font-semibold">5 to 7 working days</span> to the
+            original payment method.
+          </p>
+        </div>
+      )}
+
       {/* Header - Compact */}
       <div className="flex items-center gap-3 flex-wrap border-b border-neutral-200 pb-3">
         <Link
