@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { db } from "../../../../lib/firebase/client";
 import { useCart } from "../../../context/cart-context";
@@ -46,16 +46,14 @@ type Product = {
   colors: string[];
   sizes: string[];
   categoryId: string;
-  stock: number;
   attributes: Record<string, string>;
 };
 
-// Now includes real inventory per variant
+// Variants are only used to know which size/color combos exist
 type Variant = {
   size: string;
   color: string;
   active: boolean;
-  inventory: number;
 };
 
 type Related = {
@@ -262,12 +260,10 @@ function QuantityControl({
   quantity,
   maxQty,
   onChange,
-  disabled,
 }: {
   quantity: number;
   maxQty: number;
   onChange: (n: number) => void;
-  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -287,15 +283,12 @@ function QuantityControl({
     <div
       role="group"
       aria-label="Quantity"
-      className={cx(
-        "inline-flex h-11 items-center rounded bg-neutral-100 p-0.5",
-        disabled && "opacity-50",
-      )}
+      className="inline-flex h-11 items-center rounded bg-neutral-100 p-0.5"
     >
       <button
         type="button"
         onClick={() => onChange(clamp(quantity - 1))}
-        disabled={disabled || quantity <= 1}
+        disabled={quantity <= 1}
         aria-label="Decrease quantity"
         className={btn}
       >
@@ -308,7 +301,6 @@ function QuantityControl({
         autoComplete="off"
         aria-label="Quantity"
         aria-live="polite"
-        disabled={disabled}
         value={draft ?? String(quantity)}
         onFocus={(e) => e.target.select()}
         onChange={(e) =>
@@ -334,7 +326,7 @@ function QuantityControl({
       <button
         type="button"
         onClick={() => onChange(clamp(quantity + 1))}
-        disabled={disabled || quantity >= maxQty}
+        disabled={quantity >= maxQty}
         aria-label="Increase quantity"
         className={btn}
       >
@@ -495,6 +487,8 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         const p = d.data();
         if (p.status && p.status !== "active") return;
 
+        // Variants are used only to discover which size/color combos exist.
+        // Stock is unlimited, so we do NOT filter by inventory.
         let vs: Variant[] = [];
         try {
           const vSnap = await getDocs(
@@ -507,18 +501,14 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 size: String(x.size ?? ""),
                 color: String(x.color ?? ""),
                 active: x.status !== "inactive" && x.status !== "archived",
-                inventory:
-                  typeof x.inventoryValue === "number" ? x.inventoryValue : 0,
               };
             })
-            // Never expose variants with zero stock as buyable
-            .filter((v) => v.active && v.inventory > 0);
+            .filter((v) => v.active);
         } catch {}
 
         const unique = (arr: string[]) =>
           Array.from(new Set(arr.filter(Boolean)));
 
-        // Derive colors and sizes from *in-stock* variants only
         const colors: string[] =
           Array.isArray(p.colors) && p.colors.length
             ? p.colors.filter((c: string) => vs.some((v) => v.color === c))
@@ -531,9 +521,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         )
           .slice()
           .sort((a: string, b: string) => sizeRank(a) - sizeRank(b));
-
-        // Real total stock = sum of active variant inventory
-        const totalStock = vs.reduce((sum, v) => sum + v.inventory, 0);
 
         const attributes: Record<string, string> = {};
         if (p.attributes && typeof p.attributes === "object") {
@@ -559,13 +546,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           colors,
           sizes,
           categoryId: p.categoryId || "",
-          // Falls back to product-level inventoryValue for simple products
-          stock:
-            vs.length > 0
-              ? totalStock
-              : typeof p.inventoryValue === "number"
-                ? p.inventoryValue
-                : 0,
           attributes,
         };
 
@@ -621,30 +601,18 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     };
   }, [slug]);
 
-  // A size+color combination is available only if a matching in-stock variant exists
-  const isAvailable = useCallback(
-    (size: string, color: string) => {
-      if (!variants.length) return false;
-      return variants.some(
-        (v) =>
-          v.active &&
-          v.inventory > 0 &&
-          v.size === size &&
-          (!color || v.color === color),
-      );
-    },
-    [variants],
-  );
+  // A size+color combination exists if a matching active variant exists
+  const isAvailable = (size: string, color: string) => {
+    if (!variants.length) return true; // no variants = treat as available
+    return variants.some(
+      (v) => v.size === size && (!color || v.color === color),
+    );
+  };
 
-  const colorHasStock = useCallback(
-    (color: string) => {
-      if (!variants.length) return false;
-      return variants.some(
-        (v) => v.active && v.inventory > 0 && v.color === color,
-      );
-    },
-    [variants],
-  );
+  const colorExists = (color: string) => {
+    if (!variants.length) return true;
+    return variants.some((v) => v.color === color);
+  };
 
   const effectiveSize = selectedSize || "One Size";
   const itemInCart = product
@@ -655,9 +623,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           item.color === selectedColor,
       )
     : false;
-
-  // Sold out if there is no positive stock at all
-  const soldOut = (product?.stock ?? 0) <= 0;
 
   const requireSize = () => {
     if (product?.sizes.length && !selectedSize) {
@@ -685,14 +650,14 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   };
 
   const handleCartClick = () => {
-    if (!product || soldOut) return;
+    if (!product) return;
     if (itemInCart) {
       router.push("/cart");
       return;
     }
     if (!requireSize()) return;
     if (!isAvailable(effectiveSize, selectedColor)) {
-      toast.error("This size is out of stock");
+      toast.error("This size is unavailable");
       return;
     }
     addCurrentToCart();
@@ -704,10 +669,10 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   };
 
   const handleBuyNow = () => {
-    if (!product || soldOut) return;
+    if (!product) return;
     if (!requireSize()) return;
     if (!isAvailable(effectiveSize, selectedColor)) {
-      toast.error("This size is out of stock");
+      toast.error("This size is unavailable");
       return;
     }
     if (!itemInCart) addCurrentToCart();
@@ -739,13 +704,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
   if (loading) return <PageSkeleton />;
 
-  // If the product has no sizes AND no colors AND zero stock -> not buyable
-  if (
-    !product ||
-    (product.stock <= 0 &&
-      product.sizes.length === 0 &&
-      product.colors.length === 0)
-  ) {
+  if (!product) {
     return (
       <div className="flex min-h-[75vh] flex-col items-center justify-center bg-white px-4 text-center">
         <div className="mb-5 grid h-20 w-20 place-items-center rounded-full bg-neutral-50">
@@ -773,8 +732,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   // ----- Derived values
   const discount = discountPercent(product.mrpPaise, product.basePricePaise);
   const saved = isInWishlist(product.id);
-  const maxQty = Math.max(1, Math.min(product.stock, MAX_QTY));
-  const lowStock = product.stock > 0 && product.stock <= 5;
+  const maxQty = MAX_QTY;
   const cartQtyForVariant =
     cartItems.find(
       (item) =>
@@ -786,28 +744,19 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   const sizeMissing = sizeError && !selectedSize;
   const lineTotal = product.basePricePaise * quantity;
 
-  const qtyHint =
-    quantity >= maxQty
-      ? product.stock > 0 && product.stock < MAX_QTY
-        ? `Only ${product.stock} available`
-        : `Maximum ${MAX_QTY} per order`
-      : null;
+  const qtyHint = quantity >= maxQty ? `Maximum ${MAX_QTY} per order` : null;
 
   const cartBtnCls = cx(
     "flex h-12 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors",
     FOCUS,
-    soldOut
-      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-      : itemInCart
-        ? "bg-neutral-200 text-neutral-950 hover:bg-neutral-300"
-        : "bg-neutral-950 text-white hover:bg-neutral-800",
+    itemInCart
+      ? "bg-neutral-200 text-neutral-950 hover:bg-neutral-300"
+      : "bg-neutral-950 text-white hover:bg-neutral-800",
   );
   const buyBtnCls = cx(
     "flex h-12 items-center justify-center gap-2 rounded px-6 text-sm font-bold uppercase tracking-wider transition-colors",
     FOCUS,
-    soldOut
-      ? "cursor-not-allowed bg-neutral-200 text-neutral-500"
-      : "bg-[#ff5a1f] text-white hover:bg-[#e84912]",
+    "bg-[#ff5a1f] text-white hover:bg-[#e84912]",
   );
   const wishBtnCls = cx(
     "grid h-12 w-12 shrink-0 place-items-center rounded transition-colors",
@@ -817,9 +766,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
       : "bg-neutral-100 text-neutral-600 hover:text-red-500",
   );
 
-  const cartLabel = soldOut ? (
-    "Sold out"
-  ) : itemInCart ? (
+  const cartLabel = itemInCart ? (
     <>
       <Check className="h-4 w-4" strokeWidth={3} />
       Go to cart
@@ -912,14 +859,14 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                   >
                     {product.colors.map((c) => {
                       const on = selectedColor === c;
-                      const ok = colorHasStock(c);
+                      const ok = colorExists(c);
                       return (
                         <button
                           key={c}
                           type="button"
                           onClick={() => pickColor(c)}
                           aria-pressed={on}
-                          aria-label={`${c}${ok ? "" : ", unavailable"}`}
+                          aria-label={c}
                           className={cx(
                             "inline-flex h-10 items-center gap-2 rounded px-3.5 text-sm font-medium capitalize transition-colors",
                             FOCUS,
@@ -1006,9 +953,8 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                     quantity={quantity}
                     maxQty={maxQty}
                     onChange={setQuantity}
-                    disabled={soldOut}
                   />
-                  {!soldOut && quantity > 1 && (
+                  {quantity > 1 && (
                     <p className="text-sm text-neutral-600">
                       {quantity} × {formatINR(product.basePricePaise)} ={" "}
                       <span className="font-bold tabular-nums text-neutral-950">
@@ -1017,14 +963,9 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                     </p>
                   )}
                 </div>
-                {(qtyHint || lowStock || itemInCart) && (
+                {(qtyHint || itemInCart) && (
                   <div className="mt-2 space-y-1 text-xs">
                     {qtyHint && <p className="text-neutral-500">{qtyHint}</p>}
-                    {lowStock && (
-                      <p className="font-medium text-red-600">
-                        Only {product.stock} left in stock
-                      </p>
-                    )}
                     {itemInCart && (
                       <p className="text-neutral-600">
                         <Check
@@ -1049,7 +990,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 <button
                   type="button"
                   onClick={handleCartClick}
-                  disabled={soldOut}
                   className={cx(
                     cartBtnCls,
                     "min-w-0 flex-1 whitespace-nowrap px-3",
@@ -1057,18 +997,16 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 >
                   {cartLabel}
                 </button>
-                {!soldOut && (
-                  <button
-                    type="button"
-                    onClick={handleBuyNow}
-                    className={cx(
-                      buyBtnCls,
-                      "min-w-0 flex-1 whitespace-nowrap px-3",
-                    )}
-                  >
-                    Buy now <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleBuyNow}
+                  className={cx(
+                    buyBtnCls,
+                    "min-w-0 flex-1 whitespace-nowrap px-3",
+                  )}
+                >
+                  Buy now <ArrowRight className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   onClick={toggleWishlist}
@@ -1198,20 +1136,17 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           <button
             type="button"
             onClick={handleCartClick}
-            disabled={soldOut}
             className={cx(cartBtnCls, "flex-1 px-3")}
           >
             {cartLabel}
           </button>
-          {!soldOut && (
-            <button
-              type="button"
-              onClick={handleBuyNow}
-              className={cx(buyBtnCls, "flex-1 px-3")}
-            >
-              Buy now
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleBuyNow}
+            className={cx(buyBtnCls, "flex-1 px-3")}
+          >
+            Buy now
+          </button>
         </div>
       </div>
     </div>

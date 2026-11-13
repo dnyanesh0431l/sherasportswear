@@ -14,7 +14,6 @@ import {
 import {
   AlertCircle,
   ArrowLeft,
-  Banknote,
   Check,
   ChevronDown,
   CreditCard,
@@ -41,6 +40,100 @@ import { toast } from "sonner";
 import { useCart } from "../../context/cart-context";
 
 // ---------------------------------------------------------------------------
+// Razorpay types + helpers
+// ---------------------------------------------------------------------------
+type RazorpaySuccess = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayFailure = {
+  error?: { description?: string; reason?: string; code?: string };
+};
+
+type RazorpayOptions = {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description?: string;
+  order_id: string;
+  prefill?: { name?: string; email?: string; contact?: string };
+  notes?: Record<string, string>;
+  theme?: { color?: string };
+  handler: (response: RazorpaySuccess) => void;
+  modal?: { ondismiss?: () => void; confirm_close?: boolean };
+};
+
+type RazorpayInstance = {
+  open: () => void;
+  on: (event: "payment.failed", cb: (r: RazorpayFailure) => void) => void;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
+  }
+}
+
+const RAZORPAY_SCRIPT = "https://checkout.razorpay.com/v1/checkout.js";
+const DISMISSED = "PAYMENT_DISMISSED";
+
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (window.Razorpay) return resolve(true);
+
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${RAZORPAY_SCRIPT}"]`,
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve(!!window.Razorpay));
+      existing.addEventListener("error", () => resolve(false));
+      return;
+    }
+
+    const s = document.createElement("script");
+    s.src = RAZORPAY_SCRIPT;
+    s.async = true;
+    s.onload = () => resolve(!!window.Razorpay);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+
+/**
+ * Opens the Razorpay modal. Resolves with the success payload, rejects with
+ * DISMISSED if the user closes the modal (or the last failure reason if a
+ * payment attempt failed before they closed it). Failed attempts keep the
+ * modal open so the customer can retry inside it.
+ */
+function openRazorpay(
+  options: Omit<RazorpayOptions, "handler" | "modal">,
+): Promise<RazorpaySuccess> {
+  return new Promise((resolve, reject) => {
+    if (!window.Razorpay)
+      return reject(new Error("Payment gateway not loaded."));
+    let lastFailure: string | null = null;
+
+    const rzp = new window.Razorpay({
+      ...options,
+      handler: (response) => resolve(response),
+      modal: {
+        confirm_close: true,
+        ondismiss: () => reject(new Error(lastFailure ?? DISMISSED)),
+      },
+    });
+    rzp.on("payment.failed", (r) => {
+      lastFailure =
+        r.error?.description || r.error?.reason || "Payment failed.";
+    });
+    rzp.open();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type CartItem = {
@@ -59,12 +152,10 @@ type AddressFields = {
   fullName: string;
   phone: string;
   line1: string;
-  line2: string;
   city: string;
   state: string;
   postalCode: string;
   country: string;
-  label: string;
 };
 
 type SavedAddress = AddressFields & { id: string; isDefault: boolean };
@@ -72,9 +163,9 @@ type SavedAddress = AddressFields & { id: string; isDefault: boolean };
 // ---------------------------------------------------------------------------
 // Constants & helpers
 // ---------------------------------------------------------------------------
-const FREE_SHIPPING_PAISE = 99900;
-const SHIPPING_FEE_PAISE = 4900;
+const SHIPPING_FEE_PAISE = 8000; // ₹80
 const TAX_RATE = 0.05;
+const STORE_NAME = "SHERA";
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -115,18 +206,14 @@ const INDIAN_STATES = [
   "Puducherry",
 ];
 
-const ADDRESS_LABELS = ["Home", "Work", "Other"] as const;
-
 const EMPTY_ADDRESS: AddressFields = {
   fullName: "",
   phone: "",
   line1: "",
-  line2: "",
   city: "",
   state: "",
   postalCode: "",
   country: "India",
-  label: "Home",
 };
 
 const ADDRESS_ERROR_KEYS = [
@@ -173,6 +260,14 @@ function isIndianMobile(v: string) {
   if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
   else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
   return /^[6-9]\d{9}$/.test(d);
+}
+
+// Razorpay prefers a plain 10-digit contact
+function normalizeMobile(v: string) {
+  let d = v.replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  return d;
 }
 
 const isPin = (v: string) => /^[1-9]\d{5}$/.test(v.trim());
@@ -250,7 +345,12 @@ type TextFieldProps = {
   className?: string;
 } & Pick<
   InputHTMLAttributes<HTMLInputElement>,
-  "type" | "inputMode" | "autoComplete" | "placeholder" | "maxLength" | "readOnly"
+  | "type"
+  | "inputMode"
+  | "autoComplete"
+  | "placeholder"
+  | "maxLength"
+  | "readOnly"
 >;
 
 function TextField({
@@ -405,9 +505,6 @@ function OrderSummary({
   taxPaise: number;
   totalPaise: number;
 }) {
-  const remaining = Math.max(FREE_SHIPPING_PAISE - subtotalPaise, 0);
-  const progress = Math.min((subtotalPaise / FREE_SHIPPING_PAISE) * 100, 100);
-
   return (
     <div>
       <ul className="max-h-[340px] space-y-4 overflow-y-auto pr-1">
@@ -470,35 +567,6 @@ function OrderSummary({
         ))}
       </ul>
 
-      {/* Free shipping progress */}
-      <div className="mt-5 rounded bg-neutral-50 px-3 py-2.5">
-        <p className="text-[11px] font-medium text-neutral-700">
-          {remaining > 0 ? (
-            <>
-              Add{" "}
-              <span className="font-bold text-neutral-950">
-                {formatINR(remaining)}
-              </span>{" "}
-              more to get free shipping
-            </>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 font-bold text-[#22c55e]">
-              <Check className="h-3.5 w-3.5" strokeWidth={3} />
-              You&apos;ve unlocked free shipping
-            </span>
-          )}
-        </p>
-        <div className="mt-2 h-1 overflow-hidden rounded-sm bg-neutral-200">
-          <div
-            className={cx(
-              "h-full rounded-sm transition-[width] duration-500",
-              remaining > 0 ? "bg-[#ff5a1f]" : "bg-[#22c55e]",
-            )}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
       {/* Totals — same rows as the cart */}
       <div className="mt-5 space-y-2 border-t border-neutral-100 pt-4 text-xs sm:text-sm">
         <div className="flex justify-between text-neutral-600">
@@ -515,15 +583,9 @@ function OrderSummary({
         )}
         <div className="flex justify-between text-neutral-600">
           <span>Shipping</span>
-          {shippingPaise === 0 ? (
-            <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-[#22c55e]">
-              Free
-            </span>
-          ) : (
-            <span className="font-semibold tabular-nums text-neutral-900">
-              {formatINR(shippingPaise)}
-            </span>
-          )}
+          <span className="font-semibold tabular-nums text-neutral-900">
+            {formatINR(shippingPaise)}
+          </span>
         </div>
         <div className="flex justify-between text-neutral-600">
           <span>Tax (5%)</span>
@@ -645,6 +707,11 @@ function CheckoutBody() {
     return () => unsub();
   }, [router]);
 
+  // ----- Preload Razorpay script so the modal opens instantly
+  useEffect(() => {
+    void loadRazorpayScript();
+  }, []);
+
   // ----- Load saved addresses
   useEffect(() => {
     if (!user) return;
@@ -659,13 +726,12 @@ function CheckoutBody() {
             id: d.id,
             fullName: a.fullName || "",
             phone: a.phone || "",
-            line1: a.line1 || "",
-            line2: a.line2 || "",
+            // Fold any legacy line 2 into line 1
+            line1: [a.line1, a.line2].filter(Boolean).join(", "),
             city: a.city || "",
             state: a.state || "",
             postalCode: a.postalCode || "",
             country: a.country || "India",
-            label: a.label || "",
             isDefault: !!a.isDefault,
           };
         });
@@ -692,8 +758,7 @@ function CheckoutBody() {
     0,
   );
   const discountPaise = 0;
-  const shippingPaise =
-    subtotalPaise >= FREE_SHIPPING_PAISE ? 0 : SHIPPING_FEE_PAISE;
+  const shippingPaise = SHIPPING_FEE_PAISE; // flat ₹80 on every order
   const taxPaise = Math.round((subtotalPaise - discountPaise) * TAX_RATE);
   const totalPaise = subtotalPaise - discountPaise + shippingPaise + taxPaise;
 
@@ -707,24 +772,20 @@ function CheckoutBody() {
           fullName: selectedSaved.fullName,
           phone: selectedSaved.phone || phone.trim(),
           line1: selectedSaved.line1,
-          line2: selectedSaved.line2,
           city: selectedSaved.city,
           state: selectedSaved.state,
           postalCode: selectedSaved.postalCode,
           country: selectedSaved.country,
-          label: selectedSaved.label,
         }
       : null
     : {
         fullName: newAddress.fullName.trim(),
         phone: newAddress.phone.trim() || phone.trim(),
         line1: newAddress.line1.trim(),
-        line2: newAddress.line2.trim(),
         city: newAddress.city.trim(),
         state: newAddress.state.trim(),
         postalCode: newAddress.postalCode.trim(),
         country: newAddress.country.trim(),
-        label: newAddress.label.trim(),
       };
 
   // ----- Validation
@@ -767,6 +828,27 @@ function CheckoutBody() {
 
   const contactDone = !errors.email && !errors.phone;
   const addressDone = !ADDRESS_ERROR_KEYS.some((k) => errors[k]);
+
+  // ----- Helpers used by submit
+  async function rememberAddress(address: AddressFields) {
+    if (!user || usingSaved || !saveAddress) return;
+    try {
+      await addDoc(collection(db, "users", user.uid, "addresses"), {
+        ...address,
+        isDefault: savedAddresses.length === 0,
+        createdAt: serverTimestamp(),
+      });
+    } catch {
+      // Never blocks the order
+    }
+  }
+
+  function finishSuccess(orderId: string) {
+    setPlaced(true);
+    clearCart();
+    toast.success("Payment successful. Order placed!");
+    router.replace(`/account/orders/${orderId}`);
+  }
 
   // ----- Submit
   async function handleSubmit(e: React.FormEvent) {
@@ -817,7 +899,37 @@ function CheckoutBody() {
         };
       });
 
-      // Order + payment are written atomically: both succeed or neither does.
+      // ---------------- Online payment: create Razorpay order first
+      let razorpayOrderId: string | null = null;
+      let razorpayAmount = totalPaise;
+      let razorpayCurrency = "INR";
+
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        throw new Error(
+          "Couldn't load the payment gateway. Check your connection and try again.",
+        );
+      }
+
+      const res = await fetch("/api/razorpay/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amountPaise: totalPaise,
+          receipt: orderNumber,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.orderId) {
+        throw new Error(
+          data?.error || "Couldn't start the payment. Please try again.",
+        );
+      }
+      razorpayOrderId = data.orderId as string;
+      razorpayAmount = Number(data.amount) || totalPaise;
+      razorpayCurrency = (data.currency as string) || "INR";
+
+      // ---------------- Write order + payment atomically
       const batch = writeBatch(db);
       batch.set(doc(db, "orders", orderId), {
         orderId,
@@ -825,8 +937,10 @@ function CheckoutBody() {
         userId: user.uid,
         email: email.trim(),
         phone: phone.trim(),
-        status: "confirmed",
+        // Stays unconfirmed until the server verifies the payment
+        status: "pending_payment",
         paymentStatus: "pending",
+        paymentMethod: "razorpay",
         fulfillmentStatus: "unfulfilled",
         currency: "INR",
         items: orderItems,
@@ -838,6 +952,7 @@ function CheckoutBody() {
         taxPaise,
         totalPaise,
         paymentId,
+        razorpayOrderId,
         idempotencyKey: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -846,12 +961,13 @@ function CheckoutBody() {
         paymentId,
         orderId,
         userId: user.uid,
-        provider: "cod",
+        provider: "razorpay",
+        providerOrderId: razorpayOrderId,
         providerPaymentId: null,
         amountPaise: totalPaise,
         currency: "INR",
         status: "pending",
-        method: "cod",
+        method: "online",
         capturedAt: null,
         failureReason: null,
         createdAt: serverTimestamp(),
@@ -859,28 +975,62 @@ function CheckoutBody() {
       });
       await batch.commit();
 
-      // Optional: remember the address. Never blocks the order.
-      if (!usingSaved && saveAddress) {
-        try {
-          await addDoc(collection(db, "users", user.uid, "addresses"), {
-            ...effectiveAddress,
-            isDefault: savedAddresses.length === 0,
-            createdAt: serverTimestamp(),
-          });
-        } catch {
-          // ignore
-        }
+      // ---------------- Online: open Razorpay, then verify
+      const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!keyId)
+        throw new Error("Payment is not configured. Contact support.");
+
+      const rzpResponse = await openRazorpay({
+        key: keyId,
+        amount: razorpayAmount,
+        currency: razorpayCurrency,
+        name: STORE_NAME,
+        description: `Order ${orderNumber}`,
+        order_id: razorpayOrderId as string,
+        prefill: {
+          name: effectiveAddress.fullName,
+          email: email.trim(),
+          contact: normalizeMobile(phone),
+        },
+        notes: { orderId, orderNumber },
+        theme: { color: "#ff5a1f" },
+      });
+
+      const verifyRes = await fetch("/api/razorpay/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          razorpay_order_id: rzpResponse.razorpay_order_id,
+          razorpay_payment_id: rzpResponse.razorpay_payment_id,
+          razorpay_signature: rzpResponse.razorpay_signature,
+        }),
+      });
+      const verifyData = await verifyRes.json().catch(() => null);
+
+      if (!verifyRes.ok || !verifyData?.verified) {
+        // Money may have been taken; don't cancel — the webhook reconciles it.
+        throw new Error(
+          "We couldn't verify your payment. If money was deducted, it will be refunded or the order confirmed shortly. Contact support with order " +
+            orderNumber +
+            ".",
+        );
       }
 
-      setPlaced(true);
-      clearCart();
-      toast.success("Order placed successfully");
-      router.replace(`/account/orders/${orderId}`);
+      // The server (verify route / webhook, via Admin SDK) marks the order
+      // paid + confirmed. The client is not allowed to by Firestore rules.
+
+      await rememberAddress(effectiveAddress);
+      finishSuccess(orderId);
     } catch (error) {
-      console.error("Checkout error:", error);
-      toast.error(
-        (error as Error)?.message || "We couldn't place your order. Try again.",
-      );
+      const message = (error as Error)?.message || "";
+      const dismissed = message === DISMISSED;
+
+      if (dismissed) {
+        toast.message("Payment cancelled. You can try again.");
+      } else {
+        console.error("Checkout error:", error);
+        toast.error(message || "We couldn't place your order. Try again.");
+      }
       submittingRef.current = false;
       setSubmitting(false);
     }
@@ -965,6 +1115,8 @@ function CheckoutBody() {
     taxPaise,
     totalPaise,
   };
+
+  const buttonLabel = `Pay ${formatINR(totalPaise)}`;
 
   return (
     <div className="min-h-screen bg-[#fafafa] pb-28 pt-6 md:pt-8 lg:pb-12">
@@ -1056,11 +1208,7 @@ function CheckoutBody() {
             </SectionCard>
 
             {/* 2. Delivery address */}
-            <SectionCard
-              step={2}
-              title="Shipping address"
-              done={addressDone}
-            >
+            <SectionCard step={2} title="Shipping address" done={addressDone}>
               {savedAddresses.length > 0 && (
                 <fieldset>
                   <legend className="sr-only">Choose a delivery address</legend>
@@ -1073,9 +1221,7 @@ function CheckoutBody() {
                           key={a.id}
                           className={cx(
                             "flex cursor-pointer items-start gap-3 rounded p-3 transition-colors",
-                            selected
-                              ? "bg-neutral-100"
-                              : "hover:bg-neutral-50",
+                            selected ? "bg-neutral-100" : "hover:bg-neutral-50",
                           )}
                         >
                           <input
@@ -1107,11 +1253,6 @@ function CheckoutBody() {
                               <span className="text-xs font-bold text-neutral-950">
                                 {a.fullName}
                               </span>
-                              {a.label && (
-                                <span className="rounded bg-white px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-neutral-500">
-                                  {a.label}
-                                </span>
-                              )}
                               {a.isDefault && (
                                 <span className="rounded bg-[#ff5a1f] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
                                   Default
@@ -1119,9 +1260,11 @@ function CheckoutBody() {
                               )}
                             </div>
                             <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-600">
-                              {[a.line1, a.line2].filter(Boolean).join(", ")}
+                              {a.line1}
                               <br />
-                              {[a.city, a.state].filter(Boolean).join(", ")}{" "}
+                              {[a.city, a.state]
+                                .filter(Boolean)
+                                .join(", ")}{" "}
                               {a.postalCode}
                               {a.phone && <> · {a.phone}</>}
                             </p>
@@ -1216,15 +1359,6 @@ function CheckoutBody() {
                     onBlur={() => touch("line1")}
                     error={err("line1")}
                   />
-                  <TextField
-                    id="line2"
-                    label="Address line 2"
-                    autoComplete="address-line2"
-                    placeholder="Area, landmark"
-                    optional
-                    value={newAddress.line2}
-                    onChange={(v) => patchAddress({ line2: v })}
-                  />
                   <div className="grid gap-3 sm:grid-cols-2">
                     <TextField
                       id="city"
@@ -1278,32 +1412,6 @@ function CheckoutBody() {
                       />
                       Save this address for next time
                     </label>
-                    {saveAddress && (
-                      <div
-                        role="radiogroup"
-                        aria-label="Address type"
-                        className="inline-flex rounded bg-neutral-100 p-0.5"
-                      >
-                        {ADDRESS_LABELS.map((l) => (
-                          <button
-                            key={l}
-                            type="button"
-                            role="radio"
-                            aria-checked={newAddress.label === l}
-                            onClick={() => patchAddress({ label: l })}
-                            className={cx(
-                              "rounded px-3.5 py-1.5 text-[11px] font-bold transition-colors",
-                              focusCls,
-                              newAddress.label === l
-                                ? "bg-white text-neutral-950"
-                                : "text-neutral-500 hover:text-neutral-900",
-                            )}
-                          >
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -1311,39 +1419,27 @@ function CheckoutBody() {
 
             {/* 3. Payment */}
             <SectionCard step={3} title="Payment method" done>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3 rounded bg-neutral-100 p-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-white">
-                    <Banknote className="h-4 w-4 text-neutral-900" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-bold text-neutral-950">
-                      Cash on Delivery (COD)
-                    </div>
-                    <div className="text-[11px] text-neutral-500">
-                      Pay when your order arrives.
-                    </div>
+              <div className="flex items-center gap-3 rounded bg-neutral-100 p-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-white">
+                  <CreditCard className="h-4 w-4 text-neutral-900" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-neutral-950">
+                    Pay online
                   </div>
-                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-neutral-950 text-white">
-                    <Check className="h-3 w-3" strokeWidth={3} />
-                  </span>
-                </div>
-
-                <div
-                  aria-disabled
-                  className="flex items-center gap-3 rounded bg-neutral-50 p-3 opacity-70"
-                >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded bg-white">
-                    <CreditCard className="h-4 w-4 text-neutral-500" />
-                  </span>
-                  <div className="min-w-0 flex-1 text-xs font-bold text-neutral-700">
-                    UPI, cards and netbanking
+                  <div className="text-[11px] text-neutral-500">
+                    UPI, cards, netbanking and wallets via Razorpay.
                   </div>
-                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-neutral-500">
-                    Coming soon
-                  </span>
                 </div>
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-neutral-950 text-white">
+                  <Check className="h-3 w-3" strokeWidth={3} />
+                </span>
               </div>
+              <p className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-500">
+                <ShieldCheck className="h-3.5 w-3.5 text-neutral-700" />
+                Payments are processed securely by Razorpay. We never see your
+                card details.
+              </p>
             </SectionCard>
           </form>
 
@@ -1363,12 +1459,12 @@ function CheckoutBody() {
 
               <PlaceOrderButton
                 submitting={submitting}
-                label={`Place Order · ${formatINR(totalPaise)}`}
+                label={buttonLabel}
                 className="mt-4 w-full"
               />
 
               <p className="mt-2.5 text-center text-[11px] text-neutral-500">
-                You&apos;ll pay {formatINR(totalPaise)} in cash on delivery.
+                You&apos;ll pay {formatINR(totalPaise)} securely online.
               </p>
 
               {/* Trust badges (same as cart) */}
@@ -1400,7 +1496,7 @@ function CheckoutBody() {
           </div>
           <PlaceOrderButton
             submitting={submitting}
-            label="Place Order"
+            label="Pay Now"
             className="flex-1"
           />
         </div>
