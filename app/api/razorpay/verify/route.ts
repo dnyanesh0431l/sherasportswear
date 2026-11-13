@@ -1,25 +1,18 @@
 // app/api/razorpay/verify/route.ts
 import crypto from "crypto";
-import { NextResponse } from "next/server";
-import Razorpay from "razorpay";
-
-// NOTE: use Firebase Admin SDK for server-side writes.
-// If you already have `lib/firebase/admin.ts`, import that instead:
-//   import { adminDb } from "@/lib/firebase/admin";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { NextResponse } from "next/server";
+import Razorpay from "razorpay";
 
 // ---------- Firebase Admin init (idempotent) ----------
 function getAdminDb() {
   if (!getApps().length) {
     initializeApp({
       credential: cert({
-        projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
-          /\\n/g,
-          "\n",
-        ),
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
       }),
     });
   }
@@ -88,9 +81,6 @@ export async function POST(req: Request) {
     }
 
     // ---------- 2. Fetch the real payment from Razorpay ----------
-    // Never trust the client. Fetch the payment object to get the *actual*
-    // amount, status and method — this also prevents someone replaying a
-    // small payment against a big order.
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
 
     if (payment.status !== "captured" && payment.status !== "authorized") {
@@ -115,7 +105,6 @@ export async function POST(req: Request) {
     }
 
     // ---------- 3. Confirm the order in Firestore (server-side) ----------
-    // We look up the order by `razorpayOrderId` (saved by checkout).
     const db = getAdminDb();
     const ordersSnap = await db
       .collection("orders")
@@ -149,34 +138,61 @@ export async function POST(req: Request) {
       );
     }
 
-    // If already confirmed (webhook race), return success without re-writing
-    if (orderData.paymentStatus === "captured") {
-      return NextResponse.json({ verified: true, orderId: orderDoc.id });
-    }
+    // If already confirmed (webhook race), skip writes but still send email
+    const alreadyConfirmed = orderData.paymentStatus === "captured";
 
-    // ---------- 4. Atomically mark order + payment as captured ----------
-    const paymentId = orderData.paymentId as string;
-    const batch = db.batch();
+    if (!alreadyConfirmed) {
+      // ---------- 4. Atomically mark order + payment as captured ----------
+      const paymentId = orderData.paymentId as string;
+      const batch = db.batch();
 
-    batch.update(orderDoc.ref, {
-      status: "confirmed",
-      paymentStatus: "captured",
-      paymentMethod: "razorpay",
-      razorpayPaymentId: razorpay_payment_id,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    if (paymentId) {
-      batch.update(db.collection("payments").doc(paymentId), {
-        status: "captured",
-        providerPaymentId: razorpay_payment_id,
-        method: payment.method || "online",
-        capturedAt: FieldValue.serverTimestamp(),
+      batch.update(orderDoc.ref, {
+        status: "confirmed",
+        paymentStatus: "captured",
+        paymentMethod: "razorpay",
+        razorpayPaymentId: razorpay_payment_id,
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      if (paymentId) {
+        batch.update(db.collection("payments").doc(paymentId), {
+          status: "captured",
+          providerPaymentId: razorpay_payment_id,
+          method: payment.method || "online",
+          capturedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
     }
 
-    await batch.commit();
+    // ---------- 5. Send order confirmation email (fire-and-forget) ----------
+    // Only send if this is the first confirmation, to avoid duplicate emails
+    // when webhook + verify both run.
+    if (!alreadyConfirmed) {
+      const siteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+      fetch(`${siteUrl}/api/orders/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: orderDoc.id,
+          orderNumber: orderData.orderNumber || orderDoc.id,
+          email: orderData.email,
+          customerName: orderData.shippingAddress?.fullName,
+          items: orderData.items || [],
+          shippingAddress: orderData.shippingAddress || null,
+          subtotalPaise: orderData.subtotalPaise,
+          discountPaise: orderData.discountPaise,
+          shippingPaise: orderData.shippingPaise,
+          totalPaise: orderData.totalPaise,
+          paymentMethod: "razorpay",
+          paymentStatus: "captured",
+        }),
+      }).catch((e) => console.error("[verify] email trigger failed", e));
+    }
 
     return NextResponse.json({
       verified: true,
