@@ -13,10 +13,7 @@ const poppins = Poppins({
   display: "swap",
 });
 
-const ANNOUNCEMENTS = [
-  "Easy returns",
-  "Premium quality",
-];
+const ANNOUNCEMENTS = ["Easy returns", "Premium quality"];
 
 const FOOTER_COLUMNS = [
   {
@@ -81,6 +78,26 @@ export default function StorefrontLayout({
           </p>
         </div>
 
+        {/* Under-construction alert */}
+        <div
+          role="alert"
+          aria-live="polite"
+          className="border-b border-amber-300 bg-amber-50 text-amber-900"
+        >
+          <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-2 text-center text-[11px] font-semibold sm:text-xs">
+            <span aria-hidden="true" className="text-base leading-none">
+              🚧
+            </span>
+            <p>
+              <span className="font-bold uppercase tracking-wide">
+                Site under construction.
+              </span>{" "}
+              Please do not place any orders yet — products and checkout are not
+              fully available. We&apos;ll be live soon!
+            </p>
+          </div>
+        </div>
+
         <StorefrontHeader />
 
         <main className="flex-1 pb-20 md:pb-0">{children}</main>
@@ -94,6 +111,23 @@ export default function StorefrontLayout({
           </h2>
 
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+            {/* Footer construction notice */}
+            <div
+              role="note"
+              className="mb-6 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200"
+            >
+              <span aria-hidden="true" className="text-base leading-none">
+                🚧
+              </span>
+              <p>
+                <span className="font-semibold text-amber-100">
+                  Site under construction.
+                </span>{" "}
+                Please do not place any orders — we&apos;re still finishing the
+                store and checkout.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
               {/* Brand block */}
               <div className="col-span-2 md:col-span-1">
@@ -110,7 +144,8 @@ export default function StorefrontLayout({
                   </div>
                 </Link>
                 <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-400">
-                 B 82/01, Hudco,T.V. Center, Sudarshan Nagar, N 11, Chhatrapati Sambhajinagar, Maharashtra 431003
+                  B 82/01, Hudco,T.V. Center, Sudarshan Nagar, N 11, Chhatrapati
+                  Sambhajinagar, Maharashtra 431003
                 </p>
 
                 {/* Contact shortcut */}
@@ -145,10 +180,7 @@ export default function StorefrontLayout({
             </div>
 
             <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-neutral-800 pt-4 text-[11px] text-neutral-500 sm:flex-row">
-              <p>
-                © 2026 Shera Sports Wear. All rights
-                reserved.
-              </p>
+              <p>© 2026 Shera Sports Wear. All rights reserved.</p>
               <p className="text-[9px] uppercase tracking-widest">
                 Built to move.
               </p>

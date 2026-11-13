@@ -141,7 +141,6 @@ type CartItem = {
   name: string;
   slug: string;
   price: number;
-  mrp: number;
   image: string;
   size: string;
   color: string;
@@ -492,13 +491,11 @@ function SectionCard({
 function OrderSummary({
   items,
   subtotalPaise,
-  savingsPaise,
   shippingPaise,
   totalPaise,
 }: {
   items: CartItem[];
   subtotalPaise: number;
-  savingsPaise: number;
   shippingPaise: number;
   totalPaise: number;
 }) {
@@ -554,11 +551,6 @@ function OrderSummary({
               <p className="text-sm font-black tabular-nums text-neutral-950">
                 {formatINR(item.price * item.quantity)}
               </p>
-              {item.mrp > item.price && (
-                <p className="mt-0.5 text-[11px] tabular-nums text-neutral-400 line-through">
-                  {formatINR(item.mrp * item.quantity)}
-                </p>
-              )}
             </div>
           </li>
         ))}
@@ -567,17 +559,11 @@ function OrderSummary({
       {/* Totals — same rows as the cart */}
       <div className="mt-5 space-y-2 border-t border-neutral-100 pt-4 text-xs sm:text-sm">
         <div className="flex justify-between text-neutral-600">
-          <span>Subtotal (MRP)</span>
+          <span>Subtotal</span>
           <span className="font-semibold tabular-nums text-neutral-900">
-            {formatINR(subtotalPaise + savingsPaise)}
+            {formatINR(subtotalPaise)}
           </span>
         </div>
-        {savingsPaise > 0 && (
-          <div className="flex justify-between font-medium text-[#22c55e]">
-            <span>Discount</span>
-            <span className="tabular-nums">-{formatINR(savingsPaise)}</span>
-          </div>
-        )}
         <div className="flex justify-between text-neutral-600">
           <span>Shipping</span>
           <span className="font-semibold tabular-nums text-neutral-900">
@@ -744,10 +730,6 @@ function CheckoutBody() {
 
   // ----- Totals (all in paise)
   const subtotalPaise = items.reduce((s, it) => s + it.price * it.quantity, 0);
-  const savingsPaise = items.reduce(
-    (s, it) => s + Math.max((it.mrp || 0) - it.price, 0) * it.quantity,
-    0,
-  );
   const discountPaise = 0;
   const shippingPaise = SHIPPING_FEE_PAISE; // flat ₹80 on every order
   const totalPaise = subtotalPaise - discountPaise + shippingPaise;
@@ -883,7 +865,6 @@ function CheckoutBody() {
           color: item.color,
           quantity: item.quantity,
           unitPricePaise: item.price,
-          mrpPaise: item.mrp,
           lineTotalPaise: item.price * item.quantity,
           imageUrl: item.image,
         };
@@ -1099,7 +1080,6 @@ function CheckoutBody() {
   const summaryProps = {
     items,
     subtotalPaise,
-    savingsPaise,
     shippingPaise,
     totalPaise,
   };
