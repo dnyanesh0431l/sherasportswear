@@ -32,7 +32,7 @@ const FOOTER_COLUMNS = [
   {
     title: "Support",
     links: [
-      ["Track Order", "/orders"],
+      ["Track Order", "/account/orders"],
       ["My Account", "/account"],
       ["Contact Us", "/contact"],
       ["Pricing & Shipping", "/pricing"],
@@ -110,7 +110,7 @@ export default function StorefrontLayout({
                   </div>
                 </Link>
                 <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-neutral-400">
-                  Premium performance sportswear engineered for those who move.
+                 B 82/01, Hudco,T.V. Center, Sudarshan Nagar, N 11, Chhatrapati Sambhajinagar, Maharashtra 431003
                 </p>
 
                 {/* Contact shortcut */}
