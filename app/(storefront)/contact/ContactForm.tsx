@@ -1,5 +1,7 @@
 "use client";
 
+import { db } from "@/lib/firebase/client";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { useState } from "react";
 
 type Status = "idle" | "sending" | "success" | "error";
@@ -29,12 +31,18 @@ export function ContactForm() {
     }
 
     try {
-      const res = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      await addDoc(collection(db, "contactMessages"), {
+        name: payload.name,
+        email: payload.email,
+        orderId: payload.orderId || null,
+        topic: payload.topic || "order",
+        message: payload.message,
+        status: "new",
+        source: "storefront-contact-form",
+        userAgent:
+          typeof navigator !== "undefined" ? navigator.userAgent : null,
+        createdAt: serverTimestamp(),
       });
-      if (!res.ok) throw new Error((await res.text()) || "Send failed");
       setStatus("success");
       e.currentTarget.reset();
     } catch (err) {
