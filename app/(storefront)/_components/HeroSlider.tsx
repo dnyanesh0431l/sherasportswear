@@ -266,4 +266,3 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
     </section>
   );
 }
-g;
