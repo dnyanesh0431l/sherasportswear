@@ -22,6 +22,7 @@ import {
   Loader2,
   MapPin,
   Package,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -95,7 +96,7 @@ type Shipment = {
 };
 
 // ---------------------------------------------------------------------------
-// Status enums — keep in sync with server / client order flows
+// Status enums
 // ---------------------------------------------------------------------------
 
 const ORDER_STATUSES = [
@@ -153,7 +154,6 @@ function toDate(v: any): Date | null {
 const formatINR = (paise: number | undefined | null) =>
   typeof paise === "number" ? `₹${(paise / 100).toLocaleString("en-IN")}` : "—";
 
-// Nicely format any snake_case status for display.
 const pretty = (s: string) =>
   s
     .split("_")
@@ -201,6 +201,61 @@ function Pill({ value }: { value: string | null }) {
 const inputCls =
   "w-full border border-neutral-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow";
 
+/** Accessible iOS-style toggle switch. */
+function Toggle({
+  checked,
+  onChange,
+  label,
+  hint,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`flex w-full items-center justify-between gap-3 border px-2.5 py-2 text-left transition-colors ${
+        disabled
+          ? "border-neutral-200 bg-neutral-50 opacity-60 cursor-not-allowed"
+          : checked
+            ? "border-orange-200 bg-orange-50 hover:bg-orange-100"
+            : "border-neutral-200 bg-neutral-50 hover:bg-neutral-100"
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-neutral-800">
+          {label}
+        </span>
+        {hint && (
+          <span className="block text-[10px] text-neutral-500 mt-0.5">
+            {hint}
+          </span>
+        )}
+      </span>
+      <span
+        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-orange-500" : "bg-neutral-300"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -217,6 +272,7 @@ export default function OrderDetailPage() {
   const [paymentStatus, setPaymentStatus] = useState("");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("");
   const [savingMeta, setSavingMeta] = useState(false);
+  const [notifyOnStatusUpdate, setNotifyOnStatusUpdate] = useState(true);
 
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [shipLoading, setShipLoading] = useState(true);
@@ -227,6 +283,7 @@ export default function OrderDetailPage() {
   const [newShipStatus, setNewShipStatus] =
     useState<(typeof SHIPMENT_STATUSES)[number]>("pending");
   const [addingShipment, setAddingShipment] = useState(false);
+  const [notifyOnShipment, setNotifyOnShipment] = useState(true);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(
     null,
   );
@@ -311,6 +368,66 @@ export default function OrderDetailPage() {
     loadShipments();
   }, [load, loadShipments]);
 
+  /** Fire-and-forget order-status notification. */
+  const notifyOrderStatus = () => {
+    if (!id || !order?.email) return;
+    fetch(`/api/orders/${id}/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: order.email,
+        orderNumber: order.orderNumber,
+        status,
+        paymentStatus,
+        fulfillmentStatus,
+        totalPaise: order.totalPaise,
+        customerName: order.shippingAddress?.fullName,
+      }),
+    }).catch((err) => console.error("order notify failed", err));
+  };
+
+  /** Fire-and-forget shipment notification. */
+  const notifyShipment = (
+    shipment: {
+      carrier?: string;
+      trackingNumber?: string;
+      trackingUrl?: string | null;
+      status?: string;
+      shippedAt?: Date | null;
+      deliveredAt?: Date | null;
+    },
+    opts?: {
+      orderStatus?: string | null;
+      event?: "created" | "updated" | "deleted";
+    },
+  ) => {
+    if (!id || !order?.email) return;
+    fetch(`/api/orders/${id}/shipments/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: order.email,
+        orderNumber: order.orderNumber,
+        customerName: order.shippingAddress?.fullName,
+        totalPaise: order.totalPaise,
+        orderStatus: opts?.orderStatus ?? order.status,
+        event: opts?.event ?? "created",
+        shipment: {
+          carrier: shipment.carrier,
+          trackingNumber: shipment.trackingNumber,
+          trackingUrl: shipment.trackingUrl ?? null,
+          status: shipment.status,
+          shippedAt: shipment.shippedAt
+            ? shipment.shippedAt.toISOString()
+            : null,
+          deliveredAt: shipment.deliveredAt
+            ? shipment.deliveredAt.toISOString()
+            : null,
+        },
+      }),
+    }).catch((err) => console.error("shipment notify failed", err));
+  };
+
   const saveMeta = async () => {
     if (!id) return;
     setSavingMeta(true);
@@ -322,26 +439,15 @@ export default function OrderDetailPage() {
         updatedAt: serverTimestamp(),
       });
 
-      // Email notification (non-blocking — order update already succeeded)
-      if (order?.email) {
-        fetch(`/api/orders/${id}/notify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: order.email,
-            orderNumber: order.orderNumber,
-            status,
-            paymentStatus,
-            fulfillmentStatus,
-            totalPaise: order.totalPaise,
-            customerName: order.shippingAddress?.fullName,
-          }),
-        }).catch((err) => {
-          console.error("notify failed", err);
-        });
+      if (notifyOnStatusUpdate) {
+        notifyOrderStatus();
       }
 
-      toast.success("Order status updated");
+      toast.success(
+        notifyOnStatusUpdate
+          ? "Order status updated and customer notified"
+          : "Order status updated",
+      );
     } catch (e) {
       toast.error((e as Error)?.message || "Update failed");
     } finally {
@@ -370,6 +476,22 @@ export default function OrderDetailPage() {
     }
     setAddingShipment(true);
     try {
+      // Snapshot the shipment fields so the notify payload matches what we saved.
+      const now = new Date();
+      let shippedAt: Date | null = null;
+      let deliveredAt: Date | null = null;
+      if (
+        newShipStatus === "picked_up" ||
+        newShipStatus === "in_transit" ||
+        newShipStatus === "out_for_delivery" ||
+        newShipStatus === "delivered"
+      ) {
+        shippedAt = now;
+      }
+      if (newShipStatus === "delivered") {
+        deliveredAt = now;
+      }
+
       const payload: Record<string, any> = {
         carrier: newCarrier.trim(),
         trackingNumber: newTracking.trim(),
@@ -378,18 +500,13 @@ export default function OrderDetailPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      if (
-        newShipStatus === "picked_up" ||
-        newShipStatus === "in_transit" ||
-        newShipStatus === "out_for_delivery"
-      ) {
-        payload.shippedAt = serverTimestamp();
-      }
-      if (newShipStatus === "delivered") {
-        payload.shippedAt = serverTimestamp();
-        payload.deliveredAt = serverTimestamp();
-      }
+      if (shippedAt) payload.shippedAt = serverTimestamp();
+      if (deliveredAt) payload.deliveredAt = serverTimestamp();
+
       await addDoc(collection(db, "orders", id, "shipments"), payload);
+
+      let nextOrderStatus: string | null = null;
+      let nextFulfillmentStatus: string | null = null;
 
       if (
         order &&
@@ -400,29 +517,51 @@ export default function OrderDetailPage() {
         newShipStatus !== "pending" &&
         newShipStatus !== "label_created"
       ) {
-        const nextOrderStatus =
+        nextOrderStatus =
           newShipStatus === "delivered"
             ? "delivered"
             : newShipStatus === "out_for_delivery"
               ? "out_for_delivery"
               : "shipped";
+        nextFulfillmentStatus =
+          newShipStatus === "delivered" ? "fulfilled" : "partial";
         await updateDoc(doc(db, "orders", id), {
           status: nextOrderStatus,
-          fulfillmentStatus:
-            newShipStatus === "delivered" ? "fulfilled" : "partial",
+          fulfillmentStatus: nextFulfillmentStatus,
           updatedAt: serverTimestamp(),
         });
         setStatus(nextOrderStatus);
-        setFulfillmentStatus(
-          newShipStatus === "delivered" ? "fulfilled" : "partial",
+        setFulfillmentStatus(nextFulfillmentStatus);
+      }
+
+      // Email notification (fire and forget — never blocks the flow)
+      if (notifyOnShipment) {
+        notifyShipment(
+          {
+            carrier: newCarrier.trim(),
+            trackingNumber: newTracking.trim(),
+            trackingUrl: newTrackingUrl.trim() || null,
+            status: newShipStatus,
+            shippedAt,
+            deliveredAt,
+          },
+          {
+            orderStatus: nextOrderStatus ?? order?.status ?? null,
+            event: "created",
+          },
         );
       }
 
-      toast.success("Shipment added");
+      toast.success(
+        notifyOnShipment
+          ? "Shipment added and customer notified"
+          : "Shipment added",
+      );
       setNewCarrier("");
       setNewTracking("");
       setNewTrackingUrl("");
       setNewShipStatus("pending");
+      setNotifyOnShipment(true);
       await loadShipments();
     } catch (err) {
       toast.error((err as Error)?.message || "Failed to add shipment");
@@ -444,6 +583,7 @@ export default function OrderDetailPage() {
       await deleteDoc(doc(db, "orders", id, "shipments", s.id));
       toast.success("Shipment deleted");
       setShipments((prev) => prev.filter((x) => x.id !== s.id));
+      // No email on delete — cancelling/removing a shipment silently is intentional.
     } catch (e) {
       toast.error((e as Error)?.message || "Delete failed");
     } finally {
@@ -480,6 +620,8 @@ export default function OrderDetailPage() {
     status !== (order.status || "") ||
     paymentStatus !== (order.paymentStatus || "") ||
     fulfillmentStatus !== (order.fulfillmentStatus || "");
+
+  const hasEmail = !!order.email;
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 pb-12">
@@ -577,7 +719,6 @@ export default function OrderDetailPage() {
             )}
           </div>
 
-          {/* Totals */}
           <div className="bg-white border border-neutral-200 p-4">
             <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
               Order Totals
@@ -599,7 +740,6 @@ export default function OrderDetailPage() {
             </dl>
           </div>
 
-          {/* Addresses */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="bg-white border border-neutral-200 p-4">
               <div className="flex items-center gap-2 border-b pb-2 mb-2">
@@ -624,7 +764,6 @@ export default function OrderDetailPage() {
 
         {/* RIGHT: Status, Customer, Payment, Shipments */}
         <div className="space-y-4">
-          {/* Status controls */}
           <div className="bg-white border border-neutral-200 p-4">
             <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
               Status Controls
@@ -670,6 +809,21 @@ export default function OrderDetailPage() {
                 </select>
               </Field>
             </div>
+
+            <div className="mt-3">
+              <Toggle
+                checked={notifyOnStatusUpdate && hasEmail}
+                onChange={setNotifyOnStatusUpdate}
+                disabled={!hasEmail}
+                label="Notify customer"
+                hint={
+                  hasEmail
+                    ? `Send status email to ${order.email}`
+                    : "No customer email on this order"
+                }
+              />
+            </div>
+
             <div className="mt-3 flex justify-end">
               <button
                 onClick={saveMeta}
@@ -686,7 +840,6 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          {/* Customer info */}
           <div className="bg-white border border-neutral-200 p-4">
             <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2 mb-3">
               Customer
@@ -712,7 +865,6 @@ export default function OrderDetailPage() {
             </dl>
           </div>
 
-          {/* Payment info */}
           <div className="bg-white border border-neutral-200 p-4">
             <div className="flex items-center gap-2 border-b pb-2 mb-3">
               <CreditCard className="h-4 w-4 text-orange-500" />
@@ -740,7 +892,6 @@ export default function OrderDetailPage() {
             </dl>
           </div>
 
-          {/* Shipments */}
           <div className="bg-white border border-neutral-200">
             <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between bg-neutral-50">
               <div className="flex items-center gap-2">
@@ -788,18 +939,27 @@ export default function OrderDetailPage() {
                           </a>
                         )}
                       </div>
-                      <button
-                        onClick={() => deleteShipment(s)}
-                        disabled={deletingShipmentId === s.id}
-                        className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
-                        title="Delete shipment"
-                      >
-                        {deletingShipmentId === s.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Link
+                          href={`/admin/orders/${id}/shipments/${s.id}`}
+                          className="p-1 text-neutral-400 hover:bg-neutral-100 hover:text-orange-600"
+                          title="Edit shipment"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Link>
+                        <button
+                          onClick={() => deleteShipment(s)}
+                          disabled={deletingShipmentId === s.id}
+                          className="p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                          title="Delete shipment"
+                        >
+                          {deletingShipmentId === s.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <Pill value={s.status} />
@@ -864,6 +1024,19 @@ export default function OrderDetailPage() {
                   </option>
                 ))}
               </select>
+
+              <Toggle
+                checked={notifyOnShipment && hasEmail}
+                onChange={setNotifyOnShipment}
+                disabled={!hasEmail}
+                label="Notify customer"
+                hint={
+                  hasEmail
+                    ? `Send shipment email to ${order.email}`
+                    : "No customer email on this order"
+                }
+              />
+
               <button
                 type="submit"
                 disabled={addingShipment}

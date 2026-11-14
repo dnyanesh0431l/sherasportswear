@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/firebase/client";
 import {
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -16,6 +17,7 @@ import {
   Loader2,
   Package,
   Save,
+  Trash2,
   Truck,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,13 +42,17 @@ type OrderSummary = {
   email: string | null;
   totalPaise: number;
   status: string | null;
+  customerName: string | null;
 };
 
 const SHIPMENT_STATUSES = [
   "pending",
+  "label_created",
+  "picked_up",
   "in_transit",
   "out_for_delivery",
   "delivered",
+  "failed",
   "returned",
 ] as const;
 
@@ -60,6 +66,23 @@ function toDate(v: any): Date | null {
 const formatINR = (paise: number) =>
   `₹${(paise / 100).toLocaleString("en-IN")}`;
 
+const pretty = (s: string) =>
+  s
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+const formatDateTime = (d: Date | null) =>
+  d
+    ? d.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "—";
+
 const inputCls =
   "w-full border border-neutral-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-shadow";
 
@@ -68,11 +91,14 @@ function Pill({ value }: { value: string }) {
   const cls =
     s === "delivered"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : s === "in_transit" || s === "out_for_delivery"
+      : s === "in_transit" ||
+          s === "out_for_delivery" ||
+          s === "picked_up" ||
+          s === "label_created"
         ? "bg-blue-50 text-blue-700 border-blue-200"
         : s === "pending"
           ? "bg-amber-50 text-amber-700 border-amber-200"
-          : s === "returned"
+          : s === "returned" || s === "failed"
             ? "bg-red-50 text-red-700 border-red-200"
             : "bg-neutral-100 text-neutral-600 border-neutral-200";
   return (
@@ -99,7 +125,10 @@ export default function ShipmentDetailPage() {
   const [carrier, setCarrier] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
+  const [notifyCustomer, setNotifyCustomer] = useState(false);
+
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId || !shipmentId) return;
@@ -140,6 +169,7 @@ export default function ShipmentDetailPage() {
           email: o.email || null,
           totalPaise: typeof o.totalPaise === "number" ? o.totalPaise : 0,
           status: o.status || null,
+          customerName: o.shippingAddress?.fullName || null,
         });
       }
     } catch (e) {
@@ -153,9 +183,60 @@ export default function ShipmentDetailPage() {
     load();
   }, [load]);
 
+  // Auto-enable the "notify customer" checkbox when status changes.
+  useEffect(() => {
+    if (!shipment) return;
+    if (status !== shipment.status) {
+      setNotifyCustomer(true);
+    } else {
+      setNotifyCustomer(false);
+    }
+  }, [status, shipment]);
+
+  const dirty =
+    !!shipment &&
+    (carrier !== shipment.carrier ||
+      trackingNumber !== shipment.trackingNumber ||
+      (trackingUrl || "") !== (shipment.trackingUrl || "") ||
+      status !== shipment.status);
+
+  const sendShipmentEmail = (payload: {
+    carrier?: string;
+    trackingNumber?: string;
+    trackingUrl?: string | null;
+    status?: string;
+    shippedAt?: Date | null;
+    deliveredAt?: Date | null;
+    orderStatus?: string | null;
+  }) => {
+    if (!orderId || !order?.email) return;
+    fetch(`/api/orders/${orderId}/shipments/notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: order.email,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        totalPaise: order.totalPaise,
+        orderStatus: payload.orderStatus ?? order.status,
+        event: "updated",
+        shipment: {
+          carrier: payload.carrier,
+          trackingNumber: payload.trackingNumber,
+          trackingUrl: payload.trackingUrl ?? null,
+          status: payload.status,
+          shippedAt: payload.shippedAt ? payload.shippedAt.toISOString() : null,
+          deliveredAt: payload.deliveredAt
+            ? payload.deliveredAt.toISOString()
+            : null,
+        },
+      }),
+    }).catch((err) => console.error("shipment notify failed", err));
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orderId || !shipmentId) return;
+    if (!orderId || !shipmentId || !shipment) return;
 
     if (!carrier.trim() || !trackingNumber.trim()) {
       toast.error("Carrier and tracking number are required");
@@ -176,6 +257,7 @@ export default function ShipmentDetailPage() {
 
     setSaving(true);
     try {
+      const now = new Date();
       const payload: Record<string, any> = {
         carrier: carrier.trim(),
         trackingNumber: trackingNumber.trim(),
@@ -184,15 +266,23 @@ export default function ShipmentDetailPage() {
         updatedAt: serverTimestamp(),
       };
 
-      if (
-        (status === "in_transit" || status === "out_for_delivery") &&
-        !shipment?.shippedAt
-      ) {
+      // Stamp timestamps when transitioning, but never overwrite existing ones.
+      let nextShippedAt = shipment.shippedAt;
+      let nextDeliveredAt = shipment.deliveredAt;
+
+      const isShippedStatus =
+        status === "picked_up" ||
+        status === "in_transit" ||
+        status === "out_for_delivery" ||
+        status === "delivered";
+
+      if (isShippedStatus && !shipment.shippedAt) {
         payload.shippedAt = serverTimestamp();
+        nextShippedAt = now;
       }
-      if (status === "delivered") {
-        if (!shipment?.shippedAt) payload.shippedAt = serverTimestamp();
-        if (!shipment?.deliveredAt) payload.deliveredAt = serverTimestamp();
+      if (status === "delivered" && !shipment.deliveredAt) {
+        payload.deliveredAt = serverTimestamp();
+        nextDeliveredAt = now;
       }
 
       await updateDoc(
@@ -200,25 +290,85 @@ export default function ShipmentDetailPage() {
         payload,
       );
 
-      toast.success("Shipment updated");
-      await load();
+      // Cascade the parent order status forward when appropriate.
+      let nextOrderStatus: string | null = null;
+      const unsettled =
+        order?.status === "pending" ||
+        order?.status === "pending_payment" ||
+        order?.status === "confirmed" ||
+        order?.status === "processing";
 
-      if (status === "delivered") {
-        try {
+      if (unsettled && status !== "pending" && status !== "label_created") {
+        nextOrderStatus =
+          status === "delivered"
+            ? "delivered"
+            : status === "out_for_delivery"
+              ? "out_for_delivery"
+              : status === "picked_up" || status === "in_transit"
+                ? "shipped"
+                : (order?.status ?? null);
+
+        if (nextOrderStatus) {
+          const nextFulfillmentStatus =
+            status === "delivered" ? "fulfilled" : "partial";
           await updateDoc(doc(db, "orders", orderId), {
-            status: "delivered",
-            fulfillmentStatus: "fulfilled",
+            status: nextOrderStatus,
+            fulfillmentStatus: nextFulfillmentStatus,
             updatedAt: serverTimestamp(),
           });
-          toast.success("Order marked as delivered");
-        } catch {
-          // non-fatal
+          toast.success(
+            status === "delivered"
+              ? "Order marked as delivered"
+              : `Order updated to ${pretty(nextOrderStatus)}`,
+          );
+          setOrder((prev) =>
+            prev ? { ...prev, status: nextOrderStatus } : prev,
+          );
         }
       }
+
+      if (notifyCustomer) {
+        sendShipmentEmail({
+          carrier: carrier.trim(),
+          trackingNumber: trackingNumber.trim(),
+          trackingUrl: trackingUrl.trim() || null,
+          status,
+          shippedAt: nextShippedAt,
+          deliveredAt: nextDeliveredAt,
+          orderStatus: nextOrderStatus,
+        });
+      }
+
+      toast.success(
+        notifyCustomer
+          ? "Shipment updated and customer notified"
+          : "Shipment updated",
+      );
+      await load();
     } catch (e) {
       toast.error((e as Error)?.message || "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!orderId || !shipmentId || !shipment) return;
+    if (
+      !confirm(
+        `Delete shipment "${shipment.trackingNumber || shipment.id}"?\n\nThis cannot be undone. The customer will not be emailed.`,
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      await deleteDoc(doc(db, "orders", orderId, "shipments", shipmentId));
+      toast.success("Shipment deleted");
+      router.push(`/admin/orders/${orderId}`);
+    } catch (e) {
+      toast.error((e as Error)?.message || "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -238,10 +388,10 @@ export default function ShipmentDetailPage() {
           Shipment not found.
         </p>
         <Link
-          href="/admin/shipments"
+          href={orderId ? `/admin/orders/${orderId}` : "/admin/orders"}
           className="inline-block mt-4 text-sm text-orange-600 hover:underline"
         >
-          Back to shipments
+          {orderId ? "Back to order" : "Back to orders"}
         </Link>
       </div>
     );
@@ -255,6 +405,7 @@ export default function ShipmentDetailPage() {
           <button
             onClick={() => router.back()}
             className="p-1.5 text-neutral-500 hover:bg-neutral-100 transition-colors"
+            title="Back"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -329,7 +480,15 @@ export default function ShipmentDetailPage() {
 
           <Field
             label="Status"
-            hint='Setting "delivered" will auto-mark the parent order as delivered.'
+            hint={
+              status === "delivered"
+                ? "Saving will mark the parent order as delivered and fulfilled."
+                : status === "out_for_delivery"
+                  ? "Saving will mark the parent order as out for delivery."
+                  : status === "picked_up" || status === "in_transit"
+                    ? "Saving will mark the parent order as shipped."
+                    : undefined
+            }
           >
             <select
               value={status}
@@ -338,31 +497,73 @@ export default function ShipmentDetailPage() {
             >
               {SHIPMENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replace(/_/g, " ")}
+                  {pretty(s)}
                 </option>
               ))}
             </select>
           </Field>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Link
-              href="/admin/shipments"
-              className="border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-            >
-              Cancel
-            </Link>
+          {/* Notify customer toggle */}
+          <label className="flex items-start gap-2 border border-neutral-200 bg-neutral-50 p-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notifyCustomer}
+              onChange={(e) => setNotifyCustomer(e.target.checked)}
+              disabled={!order?.email}
+              className="mt-0.5 accent-orange-500"
+            />
+            <span className="text-xs text-neutral-700">
+              <span className="font-medium">
+                Email the customer about this update
+              </span>
+              {order?.email ? (
+                <span className="block text-neutral-500">
+                  Will send to <span className="font-mono">{order.email}</span>.
+                  Auto-enabled when the status changes.
+                </span>
+              ) : (
+                <span className="block text-neutral-500">
+                  No customer email on this order.
+                </span>
+              )}
+            </span>
+          </label>
+
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100">
             <button
-              type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting || saving}
+              className="inline-flex items-center gap-2 border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
             >
-              {saving ? (
+              {deleting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Save className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               )}
-              {saving ? "Saving…" : "Save Changes"}
+              {deleting ? "Deleting…" : "Delete shipment"}
             </button>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/admin/orders/${orderId}`}
+                className="border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Cancel
+              </Link>
+              <button
+                type="submit"
+                disabled={saving || !dirty}
+                className="inline-flex items-center gap-2 bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
           </div>
         </form>
 
@@ -376,37 +577,21 @@ export default function ShipmentDetailPage() {
             <dl className="space-y-2.5 text-sm">
               <TimelineRow
                 label="Created"
-                value={
-                  shipment.createdAt
-                    ? shipment.createdAt.toLocaleString("en-IN")
-                    : "—"
-                }
+                value={formatDateTime(shipment.createdAt)}
               />
               <TimelineRow
                 label="Shipped"
-                value={
-                  shipment.shippedAt
-                    ? shipment.shippedAt.toLocaleString("en-IN")
-                    : "—"
-                }
+                value={formatDateTime(shipment.shippedAt)}
                 done={!!shipment.shippedAt}
               />
               <TimelineRow
                 label="Delivered"
-                value={
-                  shipment.deliveredAt
-                    ? shipment.deliveredAt.toLocaleString("en-IN")
-                    : "—"
-                }
+                value={formatDateTime(shipment.deliveredAt)}
                 done={!!shipment.deliveredAt}
               />
               <TimelineRow
                 label="Last updated"
-                value={
-                  shipment.updatedAt
-                    ? shipment.updatedAt.toLocaleString("en-IN")
-                    : "—"
-                }
+                value={formatDateTime(shipment.updatedAt)}
               />
             </dl>
           </div>
