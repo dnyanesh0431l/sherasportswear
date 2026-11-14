@@ -16,8 +16,16 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useCart } from "./../../context/cart-context";
 
+// ---------------------------------------------------------------------------
+// Money + shipping (kept in sync with checkout)
+// ---------------------------------------------------------------------------
+const SHIPPING_FEE_PAISE = 8000; // ₹80 flat — matches checkout/page.tsx
+
 function formatINR(paise: number): string {
-  return `₹${(paise / 100).toLocaleString("en-IN")}`;
+  return `₹${(paise / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: paise % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -44,6 +52,12 @@ export default function CartPage() {
   const router = useRouter();
   const { items, removeItem, updateQuantity, subtotal, totalDiscount } =
     useCart();
+
+  // Cart total that matches checkout: subtotal - discount + shipping
+  const subtotalPaise = subtotal;
+  const discountPaise = totalDiscount;
+  const shippingPaise = SHIPPING_FEE_PAISE;
+  const totalPaise = subtotalPaise - discountPaise + shippingPaise;
 
   const handleCheckout = () => {
     router.push("/checkout");
@@ -211,7 +225,7 @@ export default function CartPage() {
             })}
           </div>
 
-          {/* Order Summary */}
+          {/* Order Summary — same money layout as checkout */}
           <div className="lg:col-span-4">
             <div className="sticky top-20 rounded-xl bg-white p-4 sm:p-5">
               <h2 className="text-sm font-black uppercase tracking-wide text-neutral-900 mb-3 border-b border-neutral-100 pb-3">
@@ -220,38 +234,48 @@ export default function CartPage() {
 
               <div className="space-y-2 text-xs sm:text-sm">
                 <div className="flex justify-between text-neutral-600">
-                  <span>Subtotal (MRP)</span>
-                  <span className="font-semibold text-neutral-900">
-                    {formatINR(subtotal + totalDiscount)}
+                  <span>Subtotal</span>
+                  <span className="font-semibold tabular-nums text-neutral-900">
+                    {formatINR(subtotalPaise)}
                   </span>
                 </div>
-                {totalDiscount > 0 && (
-                  <div className="flex justify-between text-[#22c55e] font-medium">
+
+                {discountPaise > 0 && (
+                  <div className="flex justify-between font-medium text-[#22c55e]">
                     <span>Discount</span>
-                    <span>-{formatINR(totalDiscount)}</span>
+                    <span className="tabular-nums">
+                      −{formatINR(discountPaise)}
+                    </span>
                   </div>
                 )}
+
                 <div className="flex justify-between text-neutral-600">
                   <span>Shipping</span>
-                  <span className="text-[#22c55e] font-bold uppercase text-[10px] tracking-wide mt-0.5">
-                    Free
+                  <span className="font-semibold tabular-nums text-neutral-900">
+                    {formatINR(shippingPaise)}
                   </span>
                 </div>
+
                 <div className="flex justify-between text-neutral-600">
                   <span>Tax</span>
-                  <span className="text-neutral-400 text-[11px]">
-                    At checkout
-                  </span>
+                  <span className="text-[11px] text-neutral-400">Included</span>
                 </div>
-                <div className="border-t border-neutral-100 pt-3 mt-1 flex justify-between items-end">
+
+                <div className="mt-1 flex items-end justify-between border-t border-neutral-100 pt-3">
                   <span className="text-sm font-bold text-neutral-900">
                     Total
                   </span>
-                  <span className="text-lg sm:text-xl font-black text-neutral-950">
-                    {formatINR(subtotal)}
+                  <span className="text-lg sm:text-xl font-black tabular-nums text-neutral-950">
+                    {formatINR(totalPaise)}
                   </span>
                 </div>
               </div>
+
+              {/* Shipping note — mirrors the checkout trust line */}
+              <p className="mt-2 text-[11px] text-neutral-500">
+                A flat {formatINR(shippingPaise)} shipping fee is added at
+                checkout.
+              </p>
 
               {/* Checkout Button */}
               <button
