@@ -1,3 +1,4 @@
+// app/(storefront)/privacy-policy/page.tsx
 import type { Metadata } from "next";
 import { LegalPage, type LegalSection } from "../_components/legal/LegalPage";
 
@@ -37,6 +38,19 @@ const sections: LegalSection[] = [
           <strong>From third parties:</strong> payment confirmation from our
           payment gateway (we never see your full card number).
         </p>
+        <p>
+          <strong>Post-purchase communications:</strong> messages, photos and
+          order details you send us when raising an issue about an order, so we
+          can respond to your question and, where applicable, investigate a
+          damaged-in-transit, defective or wrong-item claim under our{" "}
+          <a
+            href="/refund-policy"
+            className="font-semibold text-[#FF6B00] hover:underline"
+          >
+            No Returns &amp; No Refunds Policy
+          </a>
+          .
+        </p>
       </>
     ),
   },
@@ -46,10 +60,17 @@ const sections: LegalSection[] = [
     body: (
       <ul className="list-disc space-y-1 pl-6">
         <li>To fulfil and deliver your orders</li>
-        <li>To send transactional updates (dispatch, delivery, refunds)</li>
-        <li>To provide customer support</li>
+        <li>
+          To send transactional updates (dispatch, delivery, order status)
+        </li>
+        <li>
+          To provide customer support, including responding to order issues and
+          claims
+        </li>
         <li>To prevent fraud and secure the Site</li>
-        <li>To send marketing emails — only if you opted in (unsubscribe anytime)</li>
+        <li>
+          To send marketing emails — only if you opted in (unsubscribe anytime)
+        </li>
         <li>To comply with legal and tax obligations</li>
       </ul>
     ),
@@ -86,11 +107,19 @@ const sections: LegalSection[] = [
     id: "retention",
     title: "6. Data retention",
     body: (
-      <p>
-        Order records are retained for at least 8 years to comply with Indian
-        tax law. Marketing data is retained until you unsubscribe. Support
-        emails are deleted within 24 months.
-      </p>
+      <>
+        <p>
+          Order records are retained for at least 8 years to comply with Indian
+          tax law. Marketing data is retained until you unsubscribe. Support
+          emails are deleted within 24 months.
+        </p>
+        <p>
+          Photos, messages and order details you send us in connection with a
+          damaged, defective or wrong-item claim may be retained for as long as
+          needed to investigate and resolve the claim, and for our internal
+          records (typically up to 12 months after resolution).
+        </p>
+      </>
     ),
   },
   {
@@ -118,7 +147,10 @@ const sections: LegalSection[] = [
         </ul>
         <p>
           Email{" "}
-          <a className="font-semibold text-[#FF6B00] hover:underline" href="mailto:support@sherasportswear.com">
+          <a
+            className="font-semibold text-[#FF6B00] hover:underline"
+            href="mailto:support@sherasportswear.com"
+          >
             support@sherasportswear.com
           </a>{" "}
           with your request — we will respond within 30 days.
@@ -127,8 +159,35 @@ const sections: LegalSection[] = [
     ),
   },
   {
+    id: "orders-returns",
+    title: "9. Orders, shipping charges and claims",
+    body: (
+      <>
+        <p>
+          A flat shipping fee of <strong>₹80</strong> applies to every order and
+          is displayed in your cart and at checkout before payment. Payment,
+          shipping address and order details are retained as described in
+          section 6.
+        </p>
+        <p>
+          We do not accept returns or issue refunds once an order has been
+          placed and paid for, except in the limited cases described in our{" "}
+          <a
+            href="/refund-policy"
+            className="font-semibold text-[#FF6B00] hover:underline"
+          >
+            No Returns &amp; No Refunds Policy
+          </a>
+          . If you contact us about an order issue, the details and attachments
+          you share are used only to investigate and respond, and are handled
+          under the retention rules in section 6.
+        </p>
+      </>
+    ),
+  },
+  {
     id: "children",
-    title: "9. Children",
+    title: "10. Children",
     body: (
       <p>
         The Site is not intended for children under 13. If we learn we have
@@ -138,7 +197,7 @@ const sections: LegalSection[] = [
   },
   {
     id: "updates",
-    title: "10. Updates to this policy",
+    title: "11. Updates to this policy",
     body: (
       <p>
         We may update this policy from time to time. Material changes will be
@@ -152,7 +211,7 @@ export default function PrivacyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updatedAt="1 January 2025"
+      updatedAt="15 November 2025"
       intro="We collect the minimum data required to run the store, and never sell it. This page explains exactly what we collect and why."
       sections={sections}
     />

@@ -1,3 +1,4 @@
+// app/(storefront)/pricing/page.tsx
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHero } from "../_components/pages/PageHero";
@@ -5,20 +6,8 @@ import { PageHero } from "../_components/pages/PageHero";
 export const metadata: Metadata = {
   title: "Pricing & Shipping — Shera Sports Wear",
   description:
-    "Transparent pricing, bulk & team discounts, and GST-inclusive totals. No hidden fees.",
+    "Transparent pricing, GST-inclusive totals, and a flat ₹80 shipping fee on every order. No hidden fees.",
 };
-
-const shipping = [
-  { name: "Standard", price: "₹79", eta: "4–6 business days", note: "Pan-India" },
-  { name: "Express", price: "₹149", eta: "2–3 business days", note: "Metro cities" },
-  { name: "Cash on delivery", price: "₹49", eta: "5–7 business days", note: "Select PIN codes" },
-];
-
-const bulk = [
-  { qty: "10–49 pairs", discount: "10% off", note: "Clubs, teams, gyms" },
-  { qty: "50–99 pairs", discount: "15% off", note: "Schools & academies" },
-  { qty: "100+ pairs", discount: "Custom quote", note: "Corporate gifting" },
-];
 
 export default function PricingPage() {
   return (
@@ -26,7 +15,7 @@ export default function PricingPage() {
       <PageHero
         eyebrow="Pricing"
         title="Honest pricing. No surprises."
-        description="Every price you see on Shera is GST-inclusive, and fully itemised at checkout."
+        description="Every price you see on Shera is GST-inclusive, and fully itemised at checkout — with a flat ₹80 shipping fee on every order."
       />
 
       <main className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8 space-y-16">
@@ -67,64 +56,40 @@ export default function PricingPage() {
           </div>
         </section>
 
-        {/* Shipping */}
+        {/* Shipping — single flat rate */}
         <section>
           <h2 className="text-2xl font-bold tracking-tight text-neutral-950">
             Shipping charges
           </h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {shipping.map((s) => (
-              <div
-                key={s.name}
-                className="rounded-2xl border border-neutral-200 p-5"
-              >
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
-                  {s.name}
-                </p>
-                <p className="mt-2 text-2xl font-black text-neutral-950">
-                  {s.price}
-                </p>
-                <p className="mt-1 text-sm text-neutral-700">{s.eta}</p>
-                <p className="mt-1 text-xs text-neutral-500">{s.note}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+          <p className="mt-2 max-w-2xl text-sm text-neutral-600">
+            We charge one flat fee on every order, anywhere in India. It&rsquo;s
+            shown in your cart and included in the total at checkout before you
+            pay.
+          </p>
 
-        {/* Bulk */}
-        <section>
-          <div className="rounded-3xl bg-neutral-950 p-8 text-white sm:p-10">
-            <h2 className="text-2xl font-bold tracking-tight">
-              Bulk, team & corporate orders
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm text-white/70">
-              Discounts scale with volume. All bulk orders include GST invoice,
-              custom size runs, and priority dispatch.
-            </p>
-
-            <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              {bulk.map((b) => (
-                <div
-                  key={b.qty}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                >
-                  <p className="text-xs uppercase tracking-widest text-white/50">
-                    {b.qty}
-                  </p>
-                  <p className="mt-2 text-xl font-bold text-[#FF6B00]">
-                    {b.discount}
-                  </p>
-                  <p className="mt-1 text-xs text-white/60">{b.note}</p>
-                </div>
-              ))}
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-neutral-200 p-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                Standard shipping (Pan-India)
+              </p>
+              <p className="mt-2 text-3xl font-black text-neutral-950">₹80</p>
+              <p className="mt-1 text-sm text-neutral-700">
+                4–6 business days from dispatch
+              </p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Applies to every order, regardless of order value or PIN code.
+              </p>
             </div>
-
-            <Link
-              href="/contact"
-              className="mt-8 inline-flex items-center justify-center rounded-full bg-[#FF6B00] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#e65f00]"
-            >
-              Request a bulk quote →
-            </Link>
+            <div className="rounded-2xl border border-neutral-200 p-6 bg-neutral-50">
+              <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+                What you&rsquo;ll see
+              </p>
+              <ul className="mt-2 space-y-1.5 text-sm text-neutral-700">
+                <li>₹80 added once per order, not per item.</li>
+                <li>Included in the total on cart and checkout.</li>
+                <li>Itemised in your order summary before payment.</li>
+              </ul>
+            </div>
           </div>
         </section>
 
@@ -134,16 +99,26 @@ export default function PricingPage() {
           <ul className="mt-3 list-disc space-y-1.5 pl-5">
             <li>All prices are in Indian Rupees (₹) and inclusive of GST.</li>
             <li>
+              A flat ₹80 shipping fee applies to every order. It is displayed
+              in your cart and at checkout before you pay.
+            </li>
+            <li>
               Shipping timelines are estimates from dispatch date, not order
               date. Dispatch is within 24 business hours of payment confirmation.
             </li>
             <li>
-              COD carries a ₹49 handling fee and is available on select PIN
-              codes for orders up to ₹10,000.
-            </li>
-            <li>
               Prices are subject to change without notice. The price shown at
               checkout is final.
+            </li>
+            <li>
+              All sales are final. Please review our{" "}
+              <Link
+                href="/refund-policy"
+                className="font-semibold text-[#FF6B00] hover:underline"
+              >
+                No Returns &amp; No Refunds Policy
+              </Link>{" "}
+              before placing an order.
             </li>
           </ul>
         </section>
