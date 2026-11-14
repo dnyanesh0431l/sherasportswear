@@ -2,6 +2,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -15,86 +16,238 @@ export type HeroSlide = {
 };
 
 const SLIDE_MS = 5000;
+const FADE_MS = 900; // crossfade duration — tune to taste (700–1200)
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 
+const HERO_SIZES = "(max-width: 768px) 100vw, 100vw";
+
 export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
-  const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const touchX = useRef<number | null>(null);
   const count = slides.length;
 
-  const go = useCallback(
-    (dir: number) => setIndex((i) => (i + dir + count) % count),
-    [count],
+  // Only two pieces of state — one for render (active index) and one to
+  // trigger the lazy-mount of slides 2..N. Nothing else re-renders.
+  const [index, setIndex] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Refs used to toggle the transition WITHOUT triggering re-renders.
+  const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const imgRefs = useRef<Array<HTMLImageElement | null>>([]);
+  const touchX = useRef<number | null>(null);
+  const paused = useRef(false);
+  const prevIndex = useRef(0);
+
+  // Prefer-reduced-motion: cut crossfade + Ken Burns, keep arrows working.
+  const [reducedMotion, setReducedMotion] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+
+  /**
+   * Swap active slide by toggling opacity + a subtle scale on the *image*.
+   * The transition itself is in CSS (on .hero-slide / .hero-img) so the
+   * compositor handles it end-to-end without React re-rendering.
+   */
+  const applyActive = useCallback(
+    (next: number, prev: number) => {
+      const nextEl = slideRefs.current[next];
+      const prevEl = slideRefs.current[prev];
+
+      // Promote layers during the transition only.
+      if (nextEl) {
+        nextEl.style.willChange = "opacity";
+        nextEl.style.zIndex = "10";
+        nextEl.style.opacity = "1";
+        nextEl.style.pointerEvents = "auto";
+        nextEl.style.visibility = "visible";
+      }
+      if (prevEl && prev !== next) {
+        prevEl.style.willChange = "opacity";
+        prevEl.style.zIndex = "0";
+        prevEl.style.opacity = "0";
+        prevEl.style.pointerEvents = "none";
+      }
+
+      // Image Ken Burns
+      const nextImg = imgRefs.current[next];
+      const prevImg = imgRefs.current[prev];
+      if (nextImg) nextImg.style.transform = "scale(1)";
+      if (prevImg && prev !== next) prevImg.style.transform = "scale(1.06)";
+
+      // After the fade settles, release the promoted layers so we don't keep
+      // extra compositor layers around (helps low-end devices).
+      const release = () => {
+        if (nextEl) nextEl.style.willChange = "";
+        if (prevEl) prevEl.style.willChange = "";
+        if (prevEl && prev !== next) prevEl.style.visibility = "hidden";
+      };
+      if (reducedMotion) {
+        release();
+      } else {
+        window.setTimeout(release, FADE_MS + 50);
+      }
+    },
+    [reducedMotion],
   );
 
+  const go = useCallback(
+    (dir: number) => {
+      setIndex((i) => {
+        if (count <= 1) return i;
+        const next = (i + dir + count) % count;
+        prevIndex.current = i;
+        applyActive(next, i);
+        return next;
+      });
+    },
+    [count, applyActive],
+  );
+
+  const jumpTo = useCallback(
+    (next: number) => {
+      if (next === index) return;
+      const prev = index;
+      prevIndex.current = prev;
+      applyActive(next, prev);
+      setIndex(next);
+    },
+    [index, applyActive],
+  );
+
+  // Lazy-mount slides 2..N after the first paint so the LCP image isn't
+  // competing with the rest of the set.
   useEffect(() => {
-    if (count <= 1 || paused) return;
-    const timer = setInterval(() => go(1), SLIDE_MS);
-    return () => clearInterval(timer);
-  }, [count, paused, go]);
+    if (count <= 1 || hydrated) return;
+    const idle =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? window.requestIdleCallback
+        : (cb: () => void) => window.setTimeout(cb, 1200);
+    idle(() => setHydrated(true));
+  }, [count, hydrated]);
+
+  // Autoplay
+  useEffect(() => {
+    if (count <= 1 || reducedMotion) return;
+    const t = window.setInterval(() => {
+      if (paused.current) return;
+      go(1);
+    }, SLIDE_MS);
+    return () => window.clearInterval(t);
+  }, [count, go, reducedMotion]);
+
+  // Initialize visibility on mount (only slide 0 should be visible).
+  useEffect(() => {
+    slideRefs.current.forEach((el, i) => {
+      if (!el) return;
+      el.style.transition = reducedMotion
+        ? "none"
+        : `opacity ${FADE_MS}ms ease-in-out`;
+      el.style.opacity = i === 0 ? "1" : "0";
+      el.style.visibility = i === 0 ? "visible" : "hidden";
+      el.style.zIndex = i === 0 ? "10" : "0";
+      el.style.pointerEvents = i === 0 ? "auto" : "none";
+    });
+    imgRefs.current.forEach((img, i) => {
+      if (!img) return;
+      img.style.transition = reducedMotion
+        ? "none"
+        : `transform ${FADE_MS * 3}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+      img.style.transform = i === 0 ? "scale(1)" : "scale(1.06)";
+    });
+  }, [hydrated, reducedMotion]);
 
   if (!count) return null;
+
+  // Only render slide 0 during SSR; rest mount on idle. The placeholders keep
+  // DOM structure stable so refs line up once everything is in.
+  const renderedSlides = hydrated ? slides : slides.slice(0, 1);
 
   return (
     <section
       className="relative w-full overflow-hidden bg-neutral-950 group"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onMouseEnter={() => (paused.current = true)}
+      onMouseLeave={() => (paused.current = false)}
+      onFocus={() => (paused.current = true)}
+      onBlur={() => (paused.current = false)}
       onTouchStart={(e) => {
         touchX.current = e.touches[0].clientX;
-        setPaused(true);
+        paused.current = true;
       }}
       onTouchEnd={(e) => {
-        setPaused(false);
+        paused.current = false;
         if (touchX.current === null) return;
         const dx = e.changedTouches[0].clientX - touchX.current;
         touchX.current = null;
-        if (count > 1 && Math.abs(dx) > 40) {
-          go(dx < 0 ? 1 : -1);
-        }
+        if (count > 1 && Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
       }}
       aria-roledescription="carousel"
       aria-label="Featured offers"
     >
-      <div className="relative w-full h-auto md:h-[65vh] lg:h-[75vh] max-h-[800px]">
+      {/* Fixed aspect reserves space → zero CLS + real LCP measurement. */}
+      <div className="relative w-full aspect-[4/5] sm:aspect-[16/10] md:aspect-auto md:h-[65vh] lg:h-[75vh] max-h-[800px]">
         {slides.map((s, i) => {
-          const active = i === index;
+          if (i >= renderedSlides.length) {
+            return (
+              <div
+                key={s.id}
+                ref={(el) => {
+                  slideRefs.current[i] = el;
+                }}
+                className="absolute inset-0"
+                style={{ opacity: 0, visibility: "hidden" }}
+                aria-hidden
+              />
+            );
+          }
+
           return (
-            <Link
+            <div
               key={s.id}
-              href={s.ctaUrl || "/products"}
-              aria-hidden={!active}
-              tabIndex={active ? 0 : -1}
-              className={`w-full block transition-opacity duration-700 ease-in-out ${FOCUS} ${
-                active
-                  ? "relative z-10 opacity-100"
-                  : "absolute inset-0 z-0 opacity-0 pointer-events-none"
-              }`}
+              ref={(el) => {
+                slideRefs.current[i] = el;
+              }}
+              className="absolute inset-0"
+              aria-hidden={i !== index}
             >
-              {s.imageUrl && (
-                <img
-                  src={s.imageUrl}
-                  alt={s.title || "Hero Banner"}
-                  fetchPriority={i === 0 ? "high" : "auto"}
-                  loading={i === 0 ? "eager" : "lazy"}
-                  className={`w-full h-auto object-contain md:h-full md:object-cover md:object-[center_30%] transition-transform duration-[2000ms] ease-out ${
-                    active ? "scale-100" : "scale-105"
-                  }`}
-                />
-              )}
-            </Link>
+              <Link
+                href={s.ctaUrl || "/products"}
+                tabIndex={i === index ? 0 : -1}
+                className={`relative block h-full w-full overflow-hidden ${FOCUS}`}
+              >
+                {/*
+                  Wrapping the Image in a div lets us animate the transform on
+                  the <img> itself without the parent link's overflow clipping
+                  it — smoother Ken Burns on mobile Safari.
+                */}
+                <div className="absolute inset-0">
+                  <Image
+                    ref={(el) => {
+                      imgRefs.current[i] =
+                        el as unknown as HTMLImageElement | null;
+                    }}
+                    src={s.imageUrl}
+                    alt={s.title || "Hero Banner"}
+                    fill
+                    priority={i === 0}
+                    loading={i === 0 ? "eager" : "lazy"}
+                    fetchPriority={i === 0 ? "high" : "low"}
+                    sizes={HERO_SIZES}
+                    quality={78}
+                    draggable={false}
+                    className="object-contain md:object-cover md:object-[center_30%]"
+                  />
+                </div>
+              </Link>
+            </div>
           );
         })}
       </div>
 
-      {/* 
-        Arrows को नीचे की तरफ (bottom-6) कर दिया है ताकि ये इमेज के बीच में आकर कंटेंट को न ढकें।
-        मोबाइल पर इन्हें थोड़ा छोटा और ट्रांसपेरेंट रखा है।
-      */}
       {count > 1 && (
         <>
           <button
@@ -120,7 +273,6 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         </>
       )}
 
-      {/* Dots - ये भी नीचे बिल्कुल सेंटर में हैं */}
       {count > 1 && (
         <div className="absolute bottom-5 sm:bottom-8 left-0 right-0 z-20 flex justify-center gap-2 pointer-events-none">
           {slides.map((s, i) => (
@@ -128,9 +280,10 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
               key={s.id}
               onClick={(e) => {
                 e.preventDefault();
-                setIndex(i);
+                jumpTo(i);
               }}
               aria-label={`Go to slide ${i + 1}`}
+              aria-current={i === index ? "true" : undefined}
               className={`pointer-events-auto h-2 rounded-full transition-all duration-300 ${
                 i === index
                   ? "w-8 bg-white"
