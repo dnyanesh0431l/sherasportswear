@@ -65,7 +65,7 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       const nextImg = imgWrapRefs.current[next];
       const prevImg = imgWrapRefs.current[prev];
       if (nextImg) nextImg.style.transform = "scale(1)";
-      if (prevImg && prev !== next) prevImg.style.transform = "scale(1.06)";
+      if (prevImg && prev !== next) prevImg.style.transform = "scale(1.05)";
 
       const release = () => {
         if (nextEl) nextEl.style.willChange = "";
@@ -133,7 +133,7 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       el.style.transition = reducedMotion
         ? "none"
         : `transform ${FADE_MS * 3}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-      el.style.transform = i === 0 ? "scale(1)" : "scale(1.06)";
+      el.style.transform = i === 0 ? "scale(1)" : "scale(1.05)";
     });
   }, [hydrated, reducedMotion]);
 
@@ -162,19 +162,8 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       aria-roledescription="carousel"
       aria-label="Featured offers"
     >
-      {/*
-        Mobile: portrait-friendly height using svh (small viewport height)
-        so the address-bar show/hide doesn't cause CLS. 70svh is the sweet
-        spot — enough height that the banner feels impactful, but not so
-        tall that the next section is pushed entirely below the fold.
-
-        Tablet: taller, more landscape.
-        Desktop: original 65/75vh.
-
-        The wrapper has NO aspect-ratio any more — height is explicitly set,
-        so object-cover always fills edge-to-edge with zero letterboxing.
-      */}
-      <div className="relative w-full h-[70svh] min-h-[420px] max-h-[640px] sm:h-[62svh] sm:max-h-[680px] md:h-[65vh] md:max-h-[800px] lg:h-[75vh]">
+      {/* ORIGINAL layout — same className as before, untouched */}
+      <div className="relative w-full h-auto md:h-[65vh] lg:h-[75vh] max-h-[800px]">
         {slides.map((s, i) => {
           if (i >= renderedSlides.length) {
             return (
@@ -202,17 +191,8 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
               <Link
                 href={s.ctaUrl || "/products"}
                 tabIndex={i === index ? 0 : -1}
-                className={`relative block h-full w-full overflow-hidden ${FOCUS}`}
+                className={`relative block h-full w-full ${FOCUS}`}
               >
-                {/*
-                  Animate the WRAPPER, not the <img>. Keeps Ken Burns
-                  independent of the crossfade and avoids next/image ref
-                  quirks. object-cover fills the box, and per-breakpoint
-                  object-position keeps the subject in frame:
-
-                  - mobile:  center 30%  (top-biased for portrait crops)
-                  - desktop: center 30%  (matches your original)
-                */}
                 <div
                   ref={(el) => {
                     imgWrapRefs.current[i] = el;
@@ -229,7 +209,7 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
                     sizes={HERO_SIZES}
                     quality={78}
                     draggable={false}
-                    className="object-cover object-[center_30%]"
+                    className="object-contain md:object-cover md:object-[center_30%]"
                   />
                 </div>
               </Link>
@@ -286,3 +266,4 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
     </section>
   );
 }
+g;
