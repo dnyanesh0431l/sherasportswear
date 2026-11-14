@@ -16,7 +16,7 @@ export type HeroSlide = {
 };
 
 const SLIDE_MS = 5000;
-const FADE_MS = 900; // crossfade duration — tune to taste (700–1200)
+const FADE_MS = 900;
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 
@@ -25,20 +25,15 @@ const HERO_SIZES = "(max-width: 768px) 100vw, 100vw";
 export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const count = slides.length;
 
-  // Only two pieces of state — one for render (active index) and one to
-  // trigger the lazy-mount of slides 2..N. Nothing else re-renders.
   const [index, setIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
-  // Refs used to toggle the transition WITHOUT triggering re-renders.
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const imgRefs = useRef<Array<HTMLImageElement | null>>([]);
+  const imgWrapRefs = useRef<Array<HTMLDivElement | null>>([]);
   const touchX = useRef<number | null>(null);
   const paused = useRef(false);
-  const prevIndex = useRef(0);
 
-  // Prefer-reduced-motion: cut crossfade + Ken Burns, keep arrows working.
-  const [reducedMotion, setReducedMotion] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -48,17 +43,11 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
-  /**
-   * Swap active slide by toggling opacity + a subtle scale on the *image*.
-   * The transition itself is in CSS (on .hero-slide / .hero-img) so the
-   * compositor handles it end-to-end without React re-rendering.
-   */
   const applyActive = useCallback(
     (next: number, prev: number) => {
       const nextEl = slideRefs.current[next];
       const prevEl = slideRefs.current[prev];
 
-      // Promote layers during the transition only.
       if (nextEl) {
         nextEl.style.willChange = "opacity";
         nextEl.style.zIndex = "10";
@@ -73,24 +62,18 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
         prevEl.style.pointerEvents = "none";
       }
 
-      // Image Ken Burns
-      const nextImg = imgRefs.current[next];
-      const prevImg = imgRefs.current[prev];
+      const nextImg = imgWrapRefs.current[next];
+      const prevImg = imgWrapRefs.current[prev];
       if (nextImg) nextImg.style.transform = "scale(1)";
       if (prevImg && prev !== next) prevImg.style.transform = "scale(1.06)";
 
-      // After the fade settles, release the promoted layers so we don't keep
-      // extra compositor layers around (helps low-end devices).
       const release = () => {
         if (nextEl) nextEl.style.willChange = "";
         if (prevEl) prevEl.style.willChange = "";
         if (prevEl && prev !== next) prevEl.style.visibility = "hidden";
       };
-      if (reducedMotion) {
-        release();
-      } else {
-        window.setTimeout(release, FADE_MS + 50);
-      }
+      if (reducedMotion) release();
+      else window.setTimeout(release, FADE_MS + 50);
     },
     [reducedMotion],
   );
@@ -100,7 +83,6 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       setIndex((i) => {
         if (count <= 1) return i;
         const next = (i + dir + count) % count;
-        prevIndex.current = i;
         applyActive(next, i);
         return next;
       });
@@ -111,16 +93,12 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
   const jumpTo = useCallback(
     (next: number) => {
       if (next === index) return;
-      const prev = index;
-      prevIndex.current = prev;
-      applyActive(next, prev);
+      applyActive(next, index);
       setIndex(next);
     },
     [index, applyActive],
   );
 
-  // Lazy-mount slides 2..N after the first paint so the LCP image isn't
-  // competing with the rest of the set.
   useEffect(() => {
     if (count <= 1 || hydrated) return;
     const idle =
@@ -130,7 +108,6 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
     idle(() => setHydrated(true));
   }, [count, hydrated]);
 
-  // Autoplay
   useEffect(() => {
     if (count <= 1 || reducedMotion) return;
     const t = window.setInterval(() => {
@@ -140,7 +117,6 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
     return () => window.clearInterval(t);
   }, [count, go, reducedMotion]);
 
-  // Initialize visibility on mount (only slide 0 should be visible).
   useEffect(() => {
     slideRefs.current.forEach((el, i) => {
       if (!el) return;
@@ -152,19 +128,17 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       el.style.zIndex = i === 0 ? "10" : "0";
       el.style.pointerEvents = i === 0 ? "auto" : "none";
     });
-    imgRefs.current.forEach((img, i) => {
-      if (!img) return;
-      img.style.transition = reducedMotion
+    imgWrapRefs.current.forEach((el, i) => {
+      if (!el) return;
+      el.style.transition = reducedMotion
         ? "none"
         : `transform ${FADE_MS * 3}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-      img.style.transform = i === 0 ? "scale(1)" : "scale(1.06)";
+      el.style.transform = i === 0 ? "scale(1)" : "scale(1.06)";
     });
   }, [hydrated, reducedMotion]);
 
   if (!count) return null;
 
-  // Only render slide 0 during SSR; rest mount on idle. The placeholders keep
-  // DOM structure stable so refs line up once everything is in.
   const renderedSlides = hydrated ? slides : slides.slice(0, 1);
 
   return (
@@ -188,8 +162,19 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
       aria-roledescription="carousel"
       aria-label="Featured offers"
     >
-      {/* Fixed aspect reserves space → zero CLS + real LCP measurement. */}
-      <div className="relative w-full aspect-[4/5] sm:aspect-[16/10] md:aspect-auto md:h-[65vh] lg:h-[75vh] max-h-[800px]">
+      {/*
+        Mobile: portrait-friendly height using svh (small viewport height)
+        so the address-bar show/hide doesn't cause CLS. 70svh is the sweet
+        spot — enough height that the banner feels impactful, but not so
+        tall that the next section is pushed entirely below the fold.
+
+        Tablet: taller, more landscape.
+        Desktop: original 65/75vh.
+
+        The wrapper has NO aspect-ratio any more — height is explicitly set,
+        so object-cover always fills edge-to-edge with zero letterboxing.
+      */}
+      <div className="relative w-full h-[70svh] min-h-[420px] max-h-[640px] sm:h-[62svh] sm:max-h-[680px] md:h-[65vh] md:max-h-[800px] lg:h-[75vh]">
         {slides.map((s, i) => {
           if (i >= renderedSlides.length) {
             return (
@@ -220,16 +205,21 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
                 className={`relative block h-full w-full overflow-hidden ${FOCUS}`}
               >
                 {/*
-                  Wrapping the Image in a div lets us animate the transform on
-                  the <img> itself without the parent link's overflow clipping
-                  it — smoother Ken Burns on mobile Safari.
+                  Animate the WRAPPER, not the <img>. Keeps Ken Burns
+                  independent of the crossfade and avoids next/image ref
+                  quirks. object-cover fills the box, and per-breakpoint
+                  object-position keeps the subject in frame:
+
+                  - mobile:  center 30%  (top-biased for portrait crops)
+                  - desktop: center 30%  (matches your original)
                 */}
-                <div className="absolute inset-0">
+                <div
+                  ref={(el) => {
+                    imgWrapRefs.current[i] = el;
+                  }}
+                  className="absolute inset-0"
+                >
                   <Image
-                    ref={(el) => {
-                      imgRefs.current[i] =
-                        el as unknown as HTMLImageElement | null;
-                    }}
                     src={s.imageUrl}
                     alt={s.title || "Hero Banner"}
                     fill
@@ -239,7 +229,7 @@ export function HeroSlider({ slides }: { slides: HeroSlide[] }) {
                     sizes={HERO_SIZES}
                     quality={78}
                     draggable={false}
-                    className="object-contain md:object-cover md:object-[center_30%]"
+                    className="object-cover object-[center_30%]"
                   />
                 </div>
               </Link>
