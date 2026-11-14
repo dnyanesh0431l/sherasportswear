@@ -13,7 +13,10 @@ const poppins = Poppins({
   display: "swap",
 });
 
-const ANNOUNCEMENTS = ["Easy returns", "Premium quality"];
+const ANNOUNCEMENTS = [
+  "Flat ₹80 shipping on every order",
+  "Premium quality",
+];
 
 const FOOTER_COLUMNS = [
   {
