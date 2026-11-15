@@ -43,7 +43,6 @@ type Variant = {
   sku: string;
   price: number;
   mrp: number;
-  stock: number;
 };
 
 const SIZE_OPTIONS = ["6", "7", "8", "9", "10", "11", "12"];
@@ -132,7 +131,6 @@ export default function EditProductPage() {
   // Pricing
   const [basePrice, setBasePrice] = useState("");
   const [mrp, setMrp] = useState("");
-  const [simpleStock, setSimpleStock] = useState("0");
 
   // Mode
   const [mode, setMode] = useState<ProductMode>("simple");
@@ -159,6 +157,12 @@ export default function EditProductPage() {
     null | "brand" | "category" | "collection"
   >(null);
   const [quickAddValue, setQuickAddValue] = useState("");
+
+  // Reset transient flags on every mount
+  useEffect(() => {
+    setSaving(false);
+    setUploading(false);
+  }, []);
 
   // Load everything
   useEffect(() => {
@@ -209,7 +213,12 @@ export default function EditProductPage() {
         setCategoryId(p.categoryId || "");
         setCollectionIds(Array.isArray(p.collectionIds) ? p.collectionIds : []);
         setIsActive((p.status || "active") === "active");
-        setBasePrice(toRupees(p.basePricePaise));
+        // Prefer selling pricePaise, fall back to basePricePaise
+        setBasePrice(
+          toRupees(
+            typeof p.pricePaise === "number" ? p.pricePaise : p.basePricePaise,
+          ),
+        );
         setMrp(toRupees(p.mrpPaise));
         setImages(Array.isArray(p.images) ? p.images : []);
 
@@ -233,7 +242,6 @@ export default function EditProductPage() {
             sku: v.sku || "",
             price: typeof v.pricePaise === "number" ? v.pricePaise / 100 : 0,
             mrp: typeof v.mrpPaise === "number" ? v.mrpPaise / 100 : 0,
-            stock: typeof v.inventoryValue === "number" ? v.inventoryValue : 0,
           };
         });
 
@@ -260,7 +268,6 @@ export default function EditProductPage() {
           );
         } else {
           setMode("simple");
-          setSimpleStock(String(p.inventoryValue ?? 0));
         }
       } catch (e) {
         toast.error((e as Error)?.message || "Failed to load product");
@@ -291,7 +298,6 @@ export default function EditProductPage() {
               )}`.toUpperCase(),
               price: Number(basePrice) || 0,
               mrp: Number(mrp) || Number(basePrice) || 0,
-              stock: 0,
             },
           );
         }
@@ -475,7 +481,7 @@ export default function EditProductPage() {
   const removeAttribute = (index: number) =>
     setAttributes((prev) => prev.filter((_, i) => i !== index));
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
     if (!id || saving) return;
 
@@ -514,6 +520,13 @@ export default function EditProductPage() {
         }
         seen.add(k);
       }
+      const badPrice = variants.find((v) => toPaise(v.price) <= 0);
+      if (badPrice) {
+        toast.error(
+          `Selling price missing for ${badPrice.size} / ${badPrice.color}`,
+        );
+        return;
+      }
     }
 
     const attributesObj: Record<string, string> = {};
@@ -535,9 +548,6 @@ export default function EditProductPage() {
       }
 
       const isVariant = mode === "variant";
-      const totalStock = isVariant
-        ? variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
-        : Math.max(0, parseInt(simpleStock, 10) || 0);
 
       await updateDoc(doc(db, "products", id), {
         name: name.trim(),
@@ -549,15 +559,14 @@ export default function EditProductPage() {
         categoryId,
         collectionIds,
         status: isActive ? "active" : "draft",
+        pricePaise: toPaise(basePrice),
         basePricePaise: toPaise(basePrice),
         mrpPaise: toPaise(mrp || basePrice),
         images,
         attributes: attributesObj,
         hasVariants: isVariant,
-        totalInventory: totalStock,
         sizes: isVariant ? sizes : [],
         colors: isVariant ? colors : [],
-        ...(isVariant ? {} : { inventoryValue: totalStock }),
         updatedAt: serverTimestamp(),
       });
 
@@ -584,7 +593,6 @@ export default function EditProductPage() {
               sku: v.sku.trim(),
               pricePaise: toPaise(v.price),
               mrpPaise: toPaise(v.mrp || v.price),
-              inventoryValue: Math.max(0, Math.floor(v.stock)),
               status: "active",
               attributes: {},
               images: [],
@@ -607,6 +615,9 @@ export default function EditProductPage() {
       }
 
       toast.success("Product updated successfully");
+
+      // Reset BEFORE navigating so a re-visit never shows stale "Saving…"
+      setSaving(false);
       router.push("/admin/products");
       router.refresh();
     } catch (e) {
@@ -615,11 +626,6 @@ export default function EditProductPage() {
       setSaving(false);
     }
   };
-
-  const totalVariantStock = variants.reduce(
-    (s, v) => s + (Number(v.stock) || 0),
-    0,
-  );
 
   if (loading) {
     return (
@@ -671,7 +677,8 @@ export default function EditProductPage() {
             Cancel
           </Link>
           <button
-            onClick={handleSubmit}
+            type="submit"
+            form="edit-product-form"
             disabled={saving || uploading}
             className="inline-flex items-center gap-1.5 bg-orange-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
           >
@@ -686,6 +693,7 @@ export default function EditProductPage() {
       </div>
 
       <form
+        id="edit-product-form"
         onSubmit={handleSubmit}
         className="grid grid-cols-1 lg:grid-cols-3 gap-3"
       >
@@ -884,13 +892,13 @@ export default function EditProductPage() {
             </Field>
           </section>
 
-          {/* Pricing & Stock */}
+          {/* Pricing */}
           <section className="bg-white border border-neutral-200 p-3 space-y-2.5">
             <h2 className="font-semibold text-xs text-neutral-900 border-b pb-1.5 uppercase tracking-wide">
-              Pricing &amp; Stock
+              Pricing
             </h2>
 
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
               <Field label="Selling Price (₹) *">
                 <input
                   type="number"
@@ -911,18 +919,6 @@ export default function EditProductPage() {
                   onChange={(e) => setMrp(e.target.value)}
                   placeholder={basePrice || "0"}
                   className={inputCls}
-                />
-              </Field>
-              <Field label="Stock">
-                <input
-                  type="number"
-                  min="0"
-                  value={simpleStock}
-                  onChange={(e) => setSimpleStock(e.target.value)}
-                  disabled={mode === "variant"}
-                  className={`${inputCls} ${
-                    mode === "variant" ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
                 />
               </Field>
             </div>
@@ -1037,11 +1033,6 @@ export default function EditProductPage() {
                     <span className="font-semibold text-neutral-700">
                       {variants.length} variants
                     </span>
-                    {" · "}
-                    total stock{" "}
-                    <span className="font-semibold text-neutral-900">
-                      {totalVariantStock}
-                    </span>
                   </p>
 
                   <div className="overflow-x-auto border border-neutral-200">
@@ -1062,9 +1053,6 @@ export default function EditProductPage() {
                           </th>
                           <th className="px-2 py-1.5 text-right font-medium">
                             MRP
-                          </th>
-                          <th className="px-2 py-1.5 text-right font-medium">
-                            Stock
                           </th>
                         </tr>
                       </thead>
@@ -1117,21 +1105,6 @@ export default function EditProductPage() {
                                   )
                                 }
                                 className="w-20 border border-neutral-200 px-1.5 py-0.5 text-[11px] text-right"
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right">
-                              <input
-                                type="number"
-                                min="0"
-                                value={v.stock}
-                                onChange={(e) =>
-                                  updateVariant(
-                                    i,
-                                    "stock",
-                                    Number(e.target.value),
-                                  )
-                                }
-                                className="w-16 border border-neutral-200 px-1.5 py-0.5 text-[11px] text-right"
                               />
                             </td>
                           </tr>
@@ -1324,14 +1297,6 @@ export default function EditProductPage() {
                   ok={variants.length > 0}
                 />
               )}
-              <SummaryRow
-                label="Total stock"
-                value={`${
-                  mode === "variant"
-                    ? totalVariantStock
-                    : parseInt(simpleStock, 10) || 0
-                }`}
-              />
               <SummaryRow
                 label="Price"
                 value={basePrice ? `₹${basePrice}` : "—"}

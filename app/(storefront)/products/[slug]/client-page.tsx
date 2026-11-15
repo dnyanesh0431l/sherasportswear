@@ -49,11 +49,12 @@ type Product = {
   attributes: Record<string, string>;
 };
 
-// Variants are only used to know which size/color combos exist
+// Variants — used for size/color discovery AND per-variant selling price
 type Variant = {
   size: string;
   color: string;
   active: boolean;
+  pricePaise: number | null;
 };
 
 type Related = {
@@ -487,8 +488,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         const p = d.data();
         if (p.status && p.status !== "active") return;
 
-        // Variants are used only to discover which size/color combos exist.
-        // Stock is unlimited, so we do NOT filter by inventory.
+        // Variants: size/color combos + per-variant selling price
         let vs: Variant[] = [];
         try {
           const vSnap = await getDocs(
@@ -497,10 +497,13 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           vs = vSnap.docs
             .map((v) => {
               const x = v.data();
+              const priceNum = Number(x.pricePaise);
               return {
                 size: String(x.size ?? ""),
                 color: String(x.color ?? ""),
                 active: x.status !== "inactive" && x.status !== "archived",
+                pricePaise:
+                  Number.isFinite(priceNum) && priceNum > 0 ? priceNum : null,
               };
             })
             .filter((v) => v.active);
@@ -532,6 +535,12 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           );
         }
 
+        // Selling price: prefer pricePaise (selling), fall back to basePricePaise
+        const productSellingPaise = (() => {
+          const n = Number(p.pricePaise ?? p.basePricePaise);
+          return Number.isFinite(n) && n > 0 ? n : 0;
+        })();
+
         const prod: Product = {
           id: d.id,
           name: p.name || "",
@@ -539,8 +548,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
           description:
             p.description ||
             "Premium performance wear engineered for the modern athlete.",
-          basePricePaise:
-            typeof p.basePricePaise === "number" ? p.basePricePaise : 0,
+          basePricePaise: productSellingPaise,
           mrpPaise: typeof p.mrpPaise === "number" ? p.mrpPaise : 0,
           images: Array.isArray(p.images) ? p.images : [],
           colors,
@@ -577,11 +585,12 @@ export default function ClientProductPage({ slug }: { slug: string }) {
               .slice(0, 6)
               .map((x) => {
                 const r = x.data();
+                const sell = Number(r.pricePaise ?? r.basePricePaise);
                 return {
                   id: x.id,
                   name: r.name || "",
                   slug: r.slug || x.id,
-                  basePricePaise: r.basePricePaise || 0,
+                  basePricePaise: Number.isFinite(sell) && sell > 0 ? sell : 0,
                   mrpPaise: r.mrpPaise || 0,
                   image: Array.isArray(r.images) ? r.images[0] || "" : "",
                 };
@@ -603,7 +612,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
   // A size+color combination exists if a matching active variant exists
   const isAvailable = (size: string, color: string) => {
-    if (!variants.length) return true; // no variants = treat as available
+    if (!variants.length) return true;
     return variants.some(
       (v) => v.size === size && (!color || v.color === color),
     );
@@ -614,12 +623,25 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     return variants.some((v) => v.color === color);
   };
 
-  const effectiveSize = selectedSize || "One Size";
+  // Size: selected → "One Size" only if product has no sizes → ""
+  const effectiveSize =
+    selectedSize || (product && product.sizes.length === 0 ? "One Size" : "");
+
+  // Selling price for current variant selection (falls back to product price)
+  const selectedVariant = product
+    ? variants.find(
+        (v) =>
+          v.size === (effectiveSize || "One Size") && v.color === selectedColor,
+      )
+    : undefined;
+  const sellingPrice =
+    selectedVariant?.pricePaise ?? product?.basePricePaise ?? 0;
+
   const itemInCart = product
     ? cartItems.some(
         (item) =>
           item.id === product.id &&
-          item.size === effectiveSize &&
+          item.size === (effectiveSize || "One Size") &&
           item.color === selectedColor,
       )
     : false;
@@ -640,10 +662,10 @@ export default function ClientProductPage({ slug }: { slug: string }) {
       id: product.id,
       name: product.name,
       slug: product.slug,
-      price: product.basePricePaise,
+      price: sellingPrice,
       mrp: product.mrpPaise,
       image: product.images[0] || "",
-      size: effectiveSize,
+      size: effectiveSize || "One Size",
       color: selectedColor,
       quantity,
     });
@@ -662,7 +684,9 @@ export default function ClientProductPage({ slug }: { slug: string }) {
     }
     addCurrentToCart();
     toast.success("Added to cart", {
-      description: `${quantity} × ${product.name}${selectedSize ? `, size ${selectedSize}` : ""}`,
+      description: `${quantity} × ${product.name}${
+        selectedSize ? `, size ${selectedSize}` : ""
+      }`,
       action: { label: "View cart", onClick: () => router.push("/cart") },
       duration: 4500,
     });
@@ -689,7 +713,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
         id: product.id,
         name: product.name,
         slug: product.slug,
-        price: product.basePricePaise,
+        price: sellingPrice,
         mrp: product.mrpPaise,
         image: product.images[0] || "",
       });
@@ -699,7 +723,11 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
   const pickColor = (c: string) => {
     setSelectedColor(c);
-    if (selectedSize && !isAvailable(selectedSize, c)) setSelectedSize("");
+    if (selectedSize && !isAvailable(selectedSize, c)) {
+      setSelectedSize("");
+      setSizeError(true);
+      toast.info("That colour isn't available in this size. Pick a size.");
+    }
   };
 
   if (loading) return <PageSkeleton />;
@@ -730,19 +758,19 @@ export default function ClientProductPage({ slug }: { slug: string }) {
   }
 
   // ----- Derived values
-  const discount = discountPercent(product.mrpPaise, product.basePricePaise);
+  const discount = discountPercent(product.mrpPaise, sellingPrice);
   const saved = isInWishlist(product.id);
   const maxQty = MAX_QTY;
   const cartQtyForVariant =
     cartItems.find(
       (item) =>
         item.id === product.id &&
-        item.size === effectiveSize &&
+        item.size === (effectiveSize || "One Size") &&
         item.color === selectedColor,
     )?.quantity ?? 0;
   const specs = Object.entries(product.attributes);
   const sizeMissing = sizeError && !selectedSize;
-  const lineTotal = product.basePricePaise * quantity;
+  const lineTotal = sellingPrice * quantity;
 
   const qtyHint = quantity >= maxQty ? `Maximum ${MAX_QTY} per order` : null;
 
@@ -829,7 +857,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
 
             <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-3xl font-black tabular-nums tracking-tight text-neutral-950">
-                {formatINR(product.basePricePaise)}
+                {formatINR(sellingPrice)}
               </span>
               {discount > 0 && (
                 <>
@@ -956,7 +984,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                   />
                   {quantity > 1 && (
                     <p className="text-sm text-neutral-600">
-                      {quantity} × {formatINR(product.basePricePaise)} ={" "}
+                      {quantity} × {formatINR(sellingPrice)} ={" "}
                       <span className="font-bold tabular-nums text-neutral-950">
                         {formatINR(lineTotal)}
                       </span>
