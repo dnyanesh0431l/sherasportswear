@@ -6,10 +6,8 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   addDoc,
   collection,
-  doc,
   getDocs,
   serverTimestamp,
-  writeBatch,
 } from "firebase/firestore";
 import {
   AlertCircle,
@@ -844,128 +842,72 @@ function CheckoutBody() {
     setSubmitting(true);
 
     try {
-      const orderNumber = generateOrderNumber();
-      const orderId = orderNumber;
-      const paymentId = `pay_${orderId}`;
+      const idToken = await user.getIdToken();
 
-      const orderItems = items.map((item) => {
-        const variantId = `${item.size}-${item.color}`
-          .toLowerCase()
-          .replace(/\s+/g, "-");
-        const sku = `SHERA-${item.id}-${item.size}-${item.color}`
-          .toUpperCase()
-          .replace(/\s+/g, "");
-        return {
-          productId: item.id,
-          variantId,
-          sku,
-          name: item.name,
-          variantLabel: `${item.size} / ${item.color}`,
-          size: item.size,
-          color: item.color,
-          quantity: item.quantity,
-          unitPricePaise: item.price,
-          lineTotalPaise: item.price * item.quantity,
-          imageUrl: item.image,
-        };
-      });
-
-      // ---------------- Online payment: create Razorpay order first
-      let razorpayOrderId: string | null = null;
-      let razorpayAmount = totalPaise;
-      let razorpayCurrency = "INR";
-
-      const loaded = await loadRazorpayScript();
-      if (!loaded) {
-        throw new Error(
-          "Couldn't load the payment gateway. Check your connection and try again.",
-        );
-      }
-
-      const res = await fetch("/api/razorpay/create-order", {
+      // Server price nikale + Razorpay order banaye (orders collection touch nahi)
+      const createRes = await fetch("/api/razorpay/create-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
-          amountPaise: totalPaise,
-          receipt: orderNumber,
+          items: items.map((it) => ({
+            productId: it.id,
+            size: it.size,
+            color: it.color,
+            quantity: it.quantity,
+          })),
+          email: email.trim(),
+          phone: phone.trim(),
+          shippingAddress: effectiveAddress,
         }),
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.orderId) {
+
+      const createData = await createRes.json().catch(() => null);
+      if (!createRes.ok || !createData?.razorpayOrderId) {
         throw new Error(
-          data?.error || "Couldn't start the payment. Please try again.",
+          createData?.error || "Couldn't start the payment. Try again.",
         );
       }
-      razorpayOrderId = data.orderId as string;
-      razorpayAmount = Number(data.amount) || totalPaise;
-      razorpayCurrency = (data.currency as string) || "INR";
 
-      // ---------------- Write order + payment atomically
-      const batch = writeBatch(db);
-      batch.set(doc(db, "orders", orderId), {
-        orderId,
-        orderNumber,
-        userId: user.uid,
-        email: email.trim(),
-        phone: phone.trim(),
-        // Stays unconfirmed until the server verifies the payment
-        status: "pending_payment",
-        paymentStatus: "pending",
-        paymentMethod: "razorpay",
-        fulfillmentStatus: "unfulfilled",
-        currency: "INR",
-        items: orderItems,
-        shippingAddress: effectiveAddress,
-        billingAddress: effectiveAddress,
-        subtotalPaise,
-        discountPaise,
-        shippingPaise,
-        totalPaise,
-        paymentId,
+      const {
         razorpayOrderId,
-        idempotencyKey: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      batch.set(doc(db, "payments", paymentId), {
-        paymentId,
-        orderId,
-        userId: user.uid,
-        provider: "razorpay",
-        providerOrderId: razorpayOrderId,
-        providerPaymentId: null,
-        amountPaise: totalPaise,
-        currency: "INR",
-        status: "pending",
-        method: "online",
-        capturedAt: null,
-        failureReason: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      await batch.commit();
+        amount: razorpayAmount,
+        currency: razorpayCurrency,
+      } = createData as {
+        razorpayOrderId: string;
+        amount: number;
+        currency: string;
+      };
 
-      // ---------------- Online: open Razorpay, then verify
+      const loaded = await loadRazorpayScript();
+      if (!loaded)
+        throw new Error(
+          "Couldn't load the payment gateway. Check your connection.",
+        );
+
       const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-      if (!keyId)
-        throw new Error("Payment is not configured. Contact support.");
+      if (!keyId) throw new Error("Payment is not configured.");
 
+      // ---------- Razorpay modal ----------
       const rzpResponse = await openRazorpay({
         key: keyId,
         amount: razorpayAmount,
         currency: razorpayCurrency,
         name: STORE_NAME,
-        description: `Order ${orderNumber}`,
-        order_id: razorpayOrderId as string,
+        description: "Order payment",
+        order_id: razorpayOrderId,
         prefill: {
           name: effectiveAddress.fullName,
           email: email.trim(),
           contact: normalizeMobile(phone),
         },
-        notes: { orderId, orderNumber },
+        notes: {},
         theme: { color: "#ff5a1f" },
       });
 
+      // ---------- Verify -> ab order banega ----------
       const verifyRes = await fetch("/api/razorpay/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -977,29 +919,21 @@ function CheckoutBody() {
       });
       const verifyData = await verifyRes.json().catch(() => null);
 
-      if (!verifyRes.ok || !verifyData?.verified) {
-        // Money may have been taken; don't cancel — the webhook reconciles it.
+      if (!verifyRes.ok || !verifyData?.verified || !verifyData?.orderId) {
         throw new Error(
-          "We couldn't verify your payment. If money was deducted, it will be refunded or the order confirmed shortly. Contact support with order " +
-            orderNumber +
-            ".",
+          "Payment verify nahi ho paya. Agar paisa kata hai to support se contact kar. Order confirm shortly.",
         );
       }
 
-      // The server (verify route / webhook, via Admin SDK) marks the order
-      // paid + confirmed. The client is not allowed to by Firestore rules.
-
       await rememberAddress(effectiveAddress);
-      finishSuccess(orderId);
+      finishSuccess(verifyData.orderId as string);
     } catch (error) {
       const message = (error as Error)?.message || "";
-      const dismissed = message === DISMISSED;
-
-      if (dismissed) {
+      if (message === DISMISSED) {
         toast.message("Payment cancelled. You can try again.");
       } else {
         console.error("Checkout error:", error);
-        toast.error(message || "We couldn't place your order. Try again.");
+        toast.error(message || "Couldn't place order. Try again.");
       }
       submittingRef.current = false;
       setSubmitting(false);
