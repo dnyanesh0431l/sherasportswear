@@ -6,7 +6,6 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   GoogleAuthProvider,
-  OAuthProvider,
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -49,6 +48,8 @@ function mapAuthError(code?: string): string | null {
       return "An account already exists with this email using a different sign-in method.";
     case "auth/popup-blocked":
       return "Your browser blocked the sign-in window. Allow pop-ups and try again.";
+    case "auth/operation-not-allowed":
+      return "This sign-in method isn't enabled. Please contact support.";
     case "auth/popup-closed-by-user":
     case "auth/cancelled-popup-request":
       return null;
@@ -82,6 +83,25 @@ async function readIsAdmin(uid: string): Promise<boolean> {
   }
 }
 
+/** Auto-detect caps lock on password field for a friendly hint. */
+function useCapsLock() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (typeof e.getModifierState === "function") {
+        setOn(e.getModifierState("CapsLock"));
+      }
+    };
+    window.addEventListener("keydown", handler);
+    window.addEventListener("keyup", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("keyup", handler);
+    };
+  }, []);
+  return on;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,13 +114,13 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<"google" | "apple" | null>(
-    null,
-  );
+  const [socialLoading, setSocialLoading] = useState<"google" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showIpWarning, setShowIpWarning] = useState(false);
 
   const passwordRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const capsLock = useCapsLock();
 
   const busy = loading || socialLoading !== null;
 
@@ -155,22 +175,21 @@ function LoginForm() {
         password,
       );
       await routeAfterLogin(cred.user);
+      // Note: do NOT reset loading here — we're navigating away.
     } catch (err) {
       setError(mapAuthError((err as { code?: string })?.code));
       setLoading(false);
     }
   };
 
-  const handleSocial = async (kind: "google" | "apple") => {
+  const handleSocial = async (kind: "google") => {
     if (busy) return;
     setError(null);
     setSocialLoading(kind);
     try {
       await applyPersistence();
-      const provider =
-        kind === "google"
-          ? new GoogleAuthProvider()
-          : new OAuthProvider("apple.com");
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
       const cred = await signInWithPopup(auth, provider);
       await routeAfterLogin(cred.user);
     } catch (err) {
@@ -271,7 +290,7 @@ function LoginForm() {
 
           {showIpWarning && (
             <div className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-[10px] font-medium text-amber-700">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 Browsers block password saving on raw IPs. Use{" "}
                 <code className="font-bold">localhost</code> for autofill.
@@ -283,17 +302,21 @@ function LoginForm() {
             <div className="relative">
               <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
               <input
+                ref={emailRef}
                 type="email"
                 name="email"
                 autoComplete="username"
                 aria-label="Email address"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError(null);
+                }}
                 onKeyDown={handleEmailKeyDown}
                 disabled={busy}
                 placeholder="Email address"
-                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-4 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200"
+                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-4 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200 focus-visible:ring-2 focus-visible:ring-[#ff5a1f]/40"
               />
             </div>
 
@@ -307,16 +330,20 @@ function LoginForm() {
                 aria-label="Password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
                 disabled={busy}
                 placeholder="Password"
-                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-12 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200"
+                className="w-full rounded bg-neutral-100 py-3.5 pl-11 pr-12 text-sm font-medium text-neutral-950 outline-none transition-colors placeholder:text-neutral-500 focus:bg-neutral-200 focus-visible:ring-2 focus-visible:ring-[#ff5a1f]/40"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
+                tabIndex={-1}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-2 text-neutral-500 transition-colors hover:text-neutral-950"
               >
                 {showPassword ? (
@@ -326,6 +353,13 @@ function LoginForm() {
                 )}
               </button>
             </div>
+
+            {capsLock && (
+              <p className="flex items-center gap-1.5 text-[11px] font-bold text-amber-600">
+                <AlertCircle className="h-3 w-3" />
+                Caps Lock is on
+              </p>
+            )}
 
             <div className="flex items-center justify-between pb-1 pt-1">
               <label className="flex cursor-pointer items-center gap-2">
@@ -352,7 +386,7 @@ function LoginForm() {
                 role="alert"
                 className="flex items-start gap-2 rounded bg-red-50 px-3 py-2 text-xs font-medium text-red-600"
               >
-                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>{error}</span>
               </div>
             )}

@@ -81,26 +81,6 @@ export default function StorefrontLayout({
           </p>
         </div>
 
-        {/* Under-construction alert */}
-        <div
-          role="alert"
-          aria-live="polite"
-          className="border-b border-amber-300 bg-amber-50 text-amber-900"
-        >
-          <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 px-4 py-2 text-center text-[11px] font-semibold sm:text-xs">
-            <span aria-hidden="true" className="text-base leading-none">
-              🚧
-            </span>
-            <p>
-              <span className="font-bold uppercase tracking-wide">
-                Site under construction.
-              </span>{" "}
-              Please do not place any orders yet — products and checkout are not
-              fully available. We&apos;ll be live soon!
-            </p>
-          </div>
-        </div>
-
         <StorefrontHeader />
 
         <main className="flex-1 pb-20 md:pb-0">{children}</main>
