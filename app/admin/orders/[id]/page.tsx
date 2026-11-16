@@ -100,16 +100,11 @@ type Shipment = {
 // ---------------------------------------------------------------------------
 
 const ORDER_STATUSES = [
-  "pending",
   "pending_payment",
   "confirmed",
-  "processing",
-  "shipped",
   "out_for_delivery",
   "delivered",
   "cancelled",
-  "returned",
-  "refunded",
 ] as const;
 
 const PAYMENT_STATUSES = [
@@ -122,23 +117,13 @@ const PAYMENT_STATUSES = [
   "partially_refunded",
 ] as const;
 
-const FULFILLMENT_STATUSES = [
-  "unfulfilled",
-  "partial",
-  "fulfilled",
-  "returned",
-] as const;
+const SHIPMENT_STATUSES = ["out_for_delivery", "delivered"] as const;
 
-const SHIPMENT_STATUSES = [
-  "pending",
-  "label_created",
-  "picked_up",
-  "in_transit",
-  "out_for_delivery",
-  "delivered",
-  "failed",
-  "returned",
-] as const;
+// Fulfillment is always "fulfilled" — no user-facing status, no dropdown.
+const FULFILLMENT_STATUS = "fulfilled";
+
+// Fixed tracking URL — no per-shipment input, no edit.
+const TRACKING_URL = "https://indiaposttrack.com/india-post-parcel-tracking/";
 
 // ---------------------------------------------------------------------------
 // Utils
@@ -163,24 +148,15 @@ const pretty = (s: string) =>
 function Pill({ value }: { value: string | null }) {
   const s = (value || "unknown").toLowerCase();
   const cls =
-    s === "delivered" ||
-    s === "captured" ||
-    s === "paid" ||
-    s === "confirmed" ||
-    s === "fulfilled"
+    s === "delivered" || s === "captured" || s === "paid" || s === "confirmed"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : s === "pending" ||
           s === "pending_payment" ||
-          s === "processing" ||
           s === "authorized" ||
           s === "unfulfilled" ||
           s === "partial"
         ? "bg-amber-50 text-amber-700 border-amber-200"
-        : s === "shipped" ||
-            s === "in_transit" ||
-            s === "out_for_delivery" ||
-            s === "picked_up" ||
-            s === "label_created"
+        : s === "out_for_delivery" || s === "in_transit" || s === "shipped"
           ? "bg-blue-50 text-blue-700 border-blue-200"
           : s === "cancelled" ||
               s === "failed" ||
@@ -270,7 +246,6 @@ export default function OrderDetailPage() {
 
   const [status, setStatus] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
-  const [fulfillmentStatus, setFulfillmentStatus] = useState("");
   const [savingMeta, setSavingMeta] = useState(false);
   const [notifyOnStatusUpdate, setNotifyOnStatusUpdate] = useState(true);
 
@@ -279,9 +254,8 @@ export default function OrderDetailPage() {
 
   const [newCarrier, setNewCarrier] = useState("");
   const [newTracking, setNewTracking] = useState("");
-  const [newTrackingUrl, setNewTrackingUrl] = useState("");
   const [newShipStatus, setNewShipStatus] =
-    useState<(typeof SHIPMENT_STATUSES)[number]>("pending");
+    useState<(typeof SHIPMENT_STATUSES)[number]>("out_for_delivery");
   const [addingShipment, setAddingShipment] = useState(false);
   const [notifyOnShipment, setNotifyOnShipment] = useState(true);
   const [deletingShipmentId, setDeletingShipmentId] = useState<string | null>(
@@ -305,9 +279,9 @@ export default function OrderDetailPage() {
         email: d.email || null,
         phone: d.phone || null,
         userId: d.userId || null,
-        status: d.status || "pending",
+        status: d.status || "pending_payment",
         paymentStatus: d.paymentStatus || "pending",
-        fulfillmentStatus: d.fulfillmentStatus || "unfulfilled",
+        fulfillmentStatus: FULFILLMENT_STATUS,
         currency: d.currency || "INR",
         items,
         shippingAddress: d.shippingAddress || null,
@@ -322,9 +296,28 @@ export default function OrderDetailPage() {
         updatedAt: toDate(d.updatedAt),
       };
       setOrder(mapped);
-      setStatus(mapped.status || "pending");
+
+      // Guard the loaded status against the shortened enum. If a legacy order
+      // has "processing"/"shipped"/etc., fall back to the closest valid one
+      // so the <select> doesn't hold an invalid value.
+      const safeOrderStatus = (ORDER_STATUSES as readonly string[]).includes(
+        mapped.status || "",
+      )
+        ? (mapped.status as string)
+        : mapped.status === "pending"
+          ? "pending_payment"
+          : mapped.status === "processing" ||
+              mapped.status === "shipped" ||
+              mapped.status === "out_for_delivery"
+            ? "out_for_delivery"
+            : mapped.status === "returned" ||
+                mapped.status === "refunded" ||
+                mapped.status === "cancelled"
+              ? "cancelled"
+              : "pending_payment";
+
+      setStatus(safeOrderStatus);
       setPaymentStatus(mapped.paymentStatus || "pending");
-      setFulfillmentStatus(mapped.fulfillmentStatus || "unfulfilled");
     } catch (e) {
       toast.error((e as Error)?.message || "Failed to load order");
     } finally {
@@ -349,8 +342,8 @@ export default function OrderDetailPage() {
             id: d.id,
             carrier: s.carrier || "",
             trackingNumber: s.trackingNumber || "",
-            trackingUrl: s.trackingUrl || null,
-            status: s.status || "pending",
+            trackingUrl: s.trackingUrl || TRACKING_URL,
+            status: s.status || "out_for_delivery",
             shippedAt: toDate(s.shippedAt),
             deliveredAt: toDate(s.deliveredAt),
           };
@@ -379,7 +372,7 @@ export default function OrderDetailPage() {
         orderNumber: order.orderNumber,
         status,
         paymentStatus,
-        fulfillmentStatus,
+        fulfillmentStatus: FULFILLMENT_STATUS,
         totalPaise: order.totalPaise,
         customerName: order.shippingAddress?.fullName,
       }),
@@ -391,7 +384,6 @@ export default function OrderDetailPage() {
     shipment: {
       carrier?: string;
       trackingNumber?: string;
-      trackingUrl?: string | null;
       status?: string;
       shippedAt?: Date | null;
       deliveredAt?: Date | null;
@@ -415,7 +407,7 @@ export default function OrderDetailPage() {
         shipment: {
           carrier: shipment.carrier,
           trackingNumber: shipment.trackingNumber,
-          trackingUrl: shipment.trackingUrl ?? null,
+          trackingUrl: TRACKING_URL,
           status: shipment.status,
           shippedAt: shipment.shippedAt
             ? shipment.shippedAt.toISOString()
@@ -435,7 +427,7 @@ export default function OrderDetailPage() {
       await updateDoc(doc(db, "orders", id), {
         status,
         paymentStatus,
-        fulfillmentStatus,
+        fulfillmentStatus: FULFILLMENT_STATUS,
         updatedAt: serverTimestamp(),
       });
 
@@ -462,91 +454,53 @@ export default function OrderDetailPage() {
       toast.error("Carrier and tracking number are required");
       return;
     }
-    if (newTrackingUrl.trim()) {
-      try {
-        const u = new URL(newTrackingUrl.trim());
-        if (!["http:", "https:"].includes(u.protocol)) {
-          toast.error("Tracking URL must use http or https");
-          return;
-        }
-      } catch {
-        toast.error("Tracking URL is not a valid URL");
-        return;
-      }
-    }
+
     setAddingShipment(true);
     try {
-      // Snapshot the shipment fields so the notify payload matches what we saved.
       const now = new Date();
-      let shippedAt: Date | null = null;
-      let deliveredAt: Date | null = null;
-      if (
-        newShipStatus === "picked_up" ||
-        newShipStatus === "in_transit" ||
-        newShipStatus === "out_for_delivery" ||
-        newShipStatus === "delivered"
-      ) {
-        shippedAt = now;
-      }
-      if (newShipStatus === "delivered") {
-        deliveredAt = now;
-      }
+      const shippedAt = now;
+      const deliveredAt = newShipStatus === "delivered" ? now : null;
 
       const payload: Record<string, any> = {
         carrier: newCarrier.trim(),
         trackingNumber: newTracking.trim(),
-        trackingUrl: newTrackingUrl.trim() || null,
+        trackingUrl: TRACKING_URL,
         status: newShipStatus,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        shippedAt: serverTimestamp(),
       };
-      if (shippedAt) payload.shippedAt = serverTimestamp();
       if (deliveredAt) payload.deliveredAt = serverTimestamp();
 
       await addDoc(collection(db, "orders", id, "shipments"), payload);
 
-      let nextOrderStatus: string | null = null;
-      let nextFulfillmentStatus: string | null = null;
+      // Always cascade the parent order status — the only two shipment
+      // statuses are out_for_delivery and delivered, both of which must
+      // update the parent order.
+      const nextOrderStatus =
+        newShipStatus === "delivered" ? "delivered" : "out_for_delivery";
 
-      if (
-        order &&
-        (order.status === "pending" ||
-          order.status === "pending_payment" ||
-          order.status === "confirmed" ||
-          order.status === "processing") &&
-        newShipStatus !== "pending" &&
-        newShipStatus !== "label_created"
-      ) {
-        nextOrderStatus =
-          newShipStatus === "delivered"
-            ? "delivered"
-            : newShipStatus === "out_for_delivery"
-              ? "out_for_delivery"
-              : "shipped";
-        nextFulfillmentStatus =
-          newShipStatus === "delivered" ? "fulfilled" : "partial";
-        await updateDoc(doc(db, "orders", id), {
-          status: nextOrderStatus,
-          fulfillmentStatus: nextFulfillmentStatus,
-          updatedAt: serverTimestamp(),
-        });
-        setStatus(nextOrderStatus);
-        setFulfillmentStatus(nextFulfillmentStatus);
-      }
+      await updateDoc(doc(db, "orders", id), {
+        status: nextOrderStatus,
+        fulfillmentStatus: FULFILLMENT_STATUS,
+        updatedAt: serverTimestamp(),
+      });
+      setStatus(nextOrderStatus);
+      setOrder((prev) =>
+        prev ? { ...prev, fulfillmentStatus: FULFILLMENT_STATUS } : prev,
+      );
 
-      // Email notification (fire and forget — never blocks the flow)
       if (notifyOnShipment) {
         notifyShipment(
           {
             carrier: newCarrier.trim(),
             trackingNumber: newTracking.trim(),
-            trackingUrl: newTrackingUrl.trim() || null,
             status: newShipStatus,
             shippedAt,
             deliveredAt,
           },
           {
-            orderStatus: nextOrderStatus ?? order?.status ?? null,
+            orderStatus: nextOrderStatus,
             event: "created",
           },
         );
@@ -559,8 +513,7 @@ export default function OrderDetailPage() {
       );
       setNewCarrier("");
       setNewTracking("");
-      setNewTrackingUrl("");
-      setNewShipStatus("pending");
+      setNewShipStatus("out_for_delivery");
       setNotifyOnShipment(true);
       await loadShipments();
     } catch (err) {
@@ -583,7 +536,6 @@ export default function OrderDetailPage() {
       await deleteDoc(doc(db, "orders", id, "shipments", s.id));
       toast.success("Shipment deleted");
       setShipments((prev) => prev.filter((x) => x.id !== s.id));
-      // No email on delete — cancelling/removing a shipment silently is intentional.
     } catch (e) {
       toast.error((e as Error)?.message || "Delete failed");
     } finally {
@@ -618,8 +570,7 @@ export default function OrderDetailPage() {
 
   const metaDirty =
     status !== (order.status || "") ||
-    paymentStatus !== (order.paymentStatus || "") ||
-    fulfillmentStatus !== (order.fulfillmentStatus || "");
+    paymentStatus !== (order.paymentStatus || "");
 
   const hasEmail = !!order.email;
 
@@ -654,7 +605,7 @@ export default function OrderDetailPage() {
         <div className="flex items-center gap-2">
           <Pill value={order.status} />
           <Pill value={order.paymentStatus} />
-          <Pill value={order.fulfillmentStatus} />
+          <Pill value={FULFILLMENT_STATUS} />
         </div>
       </div>
 
@@ -796,17 +747,9 @@ export default function OrderDetailPage() {
                 </select>
               </Field>
               <Field label="Fulfillment Status">
-                <select
-                  value={fulfillmentStatus}
-                  onChange={(e) => setFulfillmentStatus(e.target.value)}
-                  className={inputCls}
-                >
-                  {FULFILLMENT_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {pretty(s)}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-sm text-neutral-700">
+                  Fulfilled
+                </div>
               </Field>
             </div>
 
@@ -996,7 +939,7 @@ export default function OrderDetailPage() {
                 Add Shipment
               </div>
               <input
-                placeholder="Carrier (e.g., Delhivery)"
+                placeholder="Carrier (e.g., India Post)"
                 value={newCarrier}
                 onChange={(e) => setNewCarrier(e.target.value)}
                 className={inputCls}
@@ -1007,12 +950,11 @@ export default function OrderDetailPage() {
                 onChange={(e) => setNewTracking(e.target.value)}
                 className={inputCls}
               />
-              <input
-                placeholder="Tracking URL (optional)"
-                value={newTrackingUrl}
-                onChange={(e) => setNewTrackingUrl(e.target.value)}
-                className={inputCls}
-              />
+              <Field label="Tracking URL">
+                <div className="w-full border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700 font-mono break-all">
+                  {TRACKING_URL}
+                </div>
+              </Field>
               <select
                 value={newShipStatus}
                 onChange={(e) => setNewShipStatus(e.target.value as any)}
