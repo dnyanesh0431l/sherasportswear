@@ -870,7 +870,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 </>
               )}
             </div>
-            
 
             <div className="mt-5 space-y-5">
               {/* Colour */}
@@ -1096,10 +1095,9 @@ export default function ClientProductPage({ slug }: { slug: string }) {
               )}
               <Disclosure title="Shipping and returns">
                 <p>
-                  Shipping is free on orders above{" "}
-                  {formatINR(FREE_SHIPPING_PAISE)}; otherwise it costs{" "}
-                  {formatINR(SHIPPING_FEE_PAISE)}. Tax is added at checkout.
-                  Unused items can be returned within 7 days of delivery.
+                  A flat shipping fee of 80% applies to all orders. No
+                  additional taxes are charged. All orders are final and cannot
+                  be cancelled or returned once placed.
                 </p>
               </Disclosure>
             </div>
