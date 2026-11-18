@@ -4,6 +4,7 @@
 import { collection, getDocs, limit, orderBy, query } from "firebase/firestore";
 import {
   ArrowRight,
+  Check,
   ChevronDown,
   Headphones,
   Heart,
@@ -117,6 +118,7 @@ const HIDE_SCROLLBAR =
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 const PAGE_SIZE = 20;
+const ACCENT = "#ff5a1f";
 
 const EMPTY_FILTERS: Filters = {
   categories: [],
@@ -224,7 +226,7 @@ function colorHex(name: string): string {
   return "#d4d4d4";
 }
 
-// Brand avatar fallback (when brand has no image). Deterministic color per name.
+// Deterministic brand avatar colors (used when brand has no image)
 const BRAND_COLORS = [
   "#111111",
   "#ff5a1f",
@@ -311,98 +313,186 @@ function NoScrollbars() {
 }
 
 // ---------------------------------------------------------------------------
-// Brand strip (replaces the old category strip)
+// Brand strip — toggle buttons that filter the products below
 // ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
   counts,
+  activeBrandIds,
+  onToggleBrand,
 }: {
   brands: Brand[];
   counts: Record<string, number>;
+  activeBrandIds: string[];
+  onToggleBrand: (id: string) => void;
 }) {
   if (!brands.length) return null;
 
+  const isActive = (id: string) => activeBrandIds.includes(id);
+
   return (
     <section className={`${WRAP} pt-3`} aria-label="Shop by brand">
-      {/* Desktop */}
       <div
         className="hidden gap-2.5 md:grid"
         style={{
           gridTemplateColumns: `repeat(${Math.min(brands.length, 6)}, minmax(0, 1fr))`,
         }}
       >
-        {brands.map((b) => (
-          <Link
-            key={b.id}
-            href={`/products?brand=${b.slug}`}
-            className={`group relative flex h-[60px] overflow-hidden rounded-md bg-neutral-100 ${FOCUS}`}
-          >
-            {b.image ? (
-              <img
-                src={b.image}
-                alt=""
-                loading="lazy"
-                className="absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110"
-                style={{
-                  maskImage:
-                    "linear-gradient(to right, transparent, black 45%)",
-                  WebkitMaskImage:
-                    "linear-gradient(to right, transparent, black 45%)",
-                }}
-              />
-            ) : (
-              <span
-                aria-hidden
-                className="absolute right-0 top-0 grid h-full w-[50%] select-none place-items-center text-4xl font-black uppercase text-white/30"
-                style={{ background: brandColor(b.name) }}
-              >
-                {b.name.charAt(0)}
-              </span>
-            )}
-            <div className="relative z-10 flex flex-col justify-center pl-3.5">
-              <h3 className="font-display text-[13px] font-black uppercase leading-tight text-neutral-950">
-                {b.name}
-              </h3>
-              <span className="text-[11px] font-medium text-neutral-600">
-                {counts[b.id] ?? 0} styles
-              </span>
-            </div>
-          </Link>
-        ))}
+        {brands.map((b) => {
+          const active = isActive(b.id);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => onToggleBrand(b.id)}
+              aria-pressed={active}
+              aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
+              className={`group relative flex h-[60px] cursor-pointer overflow-hidden rounded-md text-left transition-colors ${FOCUS} ${
+                active
+                  ? "bg-neutral-950 ring-2 ring-[#ff5a1f] ring-offset-2"
+                  : "bg-neutral-100 hover:bg-neutral-200"
+              }`}
+            >
+              {b.image ? (
+                <img
+                  src={b.image}
+                  alt=""
+                  loading="lazy"
+                  className={`absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110 ${
+                    active ? "opacity-40" : ""
+                  }`}
+                  style={{
+                    maskImage:
+                      "linear-gradient(to right, transparent, black 45%)",
+                    WebkitMaskImage:
+                      "linear-gradient(to right, transparent, black 45%)",
+                  }}
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className={`absolute right-0 top-0 grid h-full w-[50%] select-none place-items-center text-4xl font-black uppercase ${
+                    active ? "text-white/20" : "text-white/30"
+                  }`}
+                  style={{ background: brandColor(b.name) }}
+                >
+                  {b.name.charAt(0)}
+                </span>
+              )}
+              <div className="relative z-10 flex flex-col justify-center pl-3.5 pr-6">
+                <h3
+                  className={`font-display text-[13px] font-black uppercase leading-tight ${
+                    active ? "text-white" : "text-neutral-950"
+                  }`}
+                >
+                  {b.name}
+                </h3>
+                <span
+                  className={`text-[11px] font-medium ${
+                    active ? "text-white/70" : "text-neutral-600"
+                  }`}
+                >
+                  {counts[b.id] ?? 0} styles
+                </span>
+              </div>
+              {active && (
+                <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white">
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Mobile */}
       <div
         className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3.5 overflow-x-auto px-4 md:hidden`}
       >
-        {brands.map((b) => (
-          <Link
-            key={b.id}
-            href={`/products?brand=${b.slug}`}
-            className="flex w-[58px] shrink-0 flex-col items-center gap-1"
-          >
-            <span className="grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full border border-neutral-300 bg-neutral-100">
-              {b.image ? (
-                <img
-                  src={b.image}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span
-                  className="grid h-full w-full place-items-center text-base font-black uppercase text-white"
-                  style={{ background: brandColor(b.name) }}
-                >
-                  {b.name.charAt(0)}
-                </span>
-              )}
-            </span>
-            <span className="text-center text-[11px] font-semibold text-neutral-900">
-              {b.name}
-            </span>
-          </Link>
-        ))}
+        {brands.map((b) => {
+          const active = isActive(b.id);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => onToggleBrand(b.id)}
+              aria-pressed={active}
+              aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
+              className={`flex w-[64px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
+            >
+              <span
+                className={`relative grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full border-2 transition-colors ${
+                  active
+                    ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
+                    : "border-neutral-300"
+                }`}
+              >
+                {b.image ? (
+                  <img
+                    src={b.image}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span
+                    className="grid h-full w-full place-items-center text-base font-black uppercase text-white"
+                    style={{ background: brandColor(b.name) }}
+                  >
+                    {b.name.charAt(0)}
+                  </span>
+                )}
+                {active && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white">
+                    <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                  </span>
+                )}
+              </span>
+              <span
+                className={`text-center text-[11px] font-semibold ${
+                  active ? "text-[#ff5a1f]" : "text-neutral-900"
+                }`}
+              >
+                {b.name}
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* Active filter bar */}
+      {activeBrandIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px]">
+          <span className="text-neutral-600">Filtering by:</span>
+          {activeBrandIds.map((id) => {
+            const b = brands.find((x) => x.id === id);
+            if (!b) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onToggleBrand(id)}
+                className={`inline-flex items-center gap-1 rounded-full bg-neutral-950 py-1 pl-2.5 pr-1.5 font-semibold text-white transition-colors hover:bg-neutral-800 ${FOCUS}`}
+              >
+                {b.name}
+                <X className="h-3 w-3" />
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => activeBrandIds.forEach((id) => onToggleBrand(id))}
+            className={`px-1 font-bold text-neutral-950 underline underline-offset-2 ${FOCUS}`}
+          >
+            Clear
+          </button>
+          <a
+            href="#showcase"
+            className={`ml-1 inline-flex items-center gap-0.5 font-bold text-[#ff5a1f] hover:underline ${FOCUS}`}
+          >
+            View results <ArrowRight className="h-3 w-3" />
+          </a>
+        </div>
+      )}
     </section>
   );
 }
@@ -860,19 +950,25 @@ function FilterSheet({
 }
 
 // ---------------------------------------------------------------------------
-// Showcase
+// Showcase (controlled: filters + active tab come from the page)
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
   categoryNames,
   brandNames,
+  filters,
+  onFiltersChange,
+  activeKey,
+  onActiveKeyChange,
 }: {
   tabs: Tab[];
   categoryNames: Record<string, string>;
   brandNames: Record<string, string>;
+  filters: Filters;
+  onFiltersChange: (f: Filters) => void;
+  activeKey: string | undefined;
+  onActiveKeyChange: (key: string) => void;
 }) {
-  const [activeKey, setActiveKey] = useState<string | undefined>(tabs[0]?.key);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>("featured");
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -891,15 +987,17 @@ function Showcase({
     return list;
   }, [tabProducts, filters, sort]);
 
+  // Reset pagination whenever the filter or tab changes from the outside
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [filters, activeKey]);
+
   const closeSheet = useCallback(() => setSheetOpen(false), []);
 
   if (!tab) return null;
 
-  const update = (f: Filters) => {
-    setFilters(f);
-    setVisible(PAGE_SIZE);
-  };
-  const clearAll = () => update(EMPTY_FILTERS);
+  const update = (f: Filters) => onFiltersChange(f);
+  const clearAll = () => onFiltersChange(EMPTY_FILTERS);
 
   const chips: { key: string; label: string; remove: () => void }[] = [
     ...filters.categories.map((id) => ({
@@ -976,7 +1074,11 @@ function Showcase({
   const remaining = results.length - shown.length;
 
   return (
-    <section className={`${WRAP} pt-5`} aria-label="Shop products">
+    <section
+      id="showcase"
+      className={`${WRAP} pt-5 scroll-mt-4`}
+      aria-label="Shop products"
+    >
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-5">
         <h2 className="font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
           Shop the drop
@@ -993,10 +1095,7 @@ function Showcase({
                 key={t.key}
                 role="tab"
                 aria-selected={on}
-                onClick={() => {
-                  setActiveKey(t.key);
-                  setVisible(PAGE_SIZE);
-                }}
+                onClick={() => onActiveKeyChange(t.key)}
                 className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${FOCUS} ${
                   on
                     ? "bg-neutral-950 text-white"
@@ -1323,6 +1422,12 @@ export default function StorefrontHomePage() {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
+  // Lifted shared state — both BrandStrip and Showcase read/write these.
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [activeTabKey, setActiveTabKey] = useState<string | undefined>(
+    undefined,
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1404,8 +1509,6 @@ export default function StorefrontHomePage() {
             };
           });
 
-        // Brands — from the `brands` collection. Falls back to brands
-        // derived from products if the collection doesn't exist yet.
         const brandsFromCollection: Brand[] = (brandsSnap?.docs ?? [])
           .filter((d) => {
             const s = d.data().status;
@@ -1506,6 +1609,26 @@ export default function StorefrontHomePage() {
     };
   }, [attempt]);
 
+  // Toggle a brand from the strip. Also forces the "All products" tab so the
+  // filter applies globally, and scrolls to the results on select.
+  const handleToggleBrand = (brandId: string) => {
+    const wasActive = filters.brands.includes(brandId);
+    setActiveTabKey("__all__");
+    setFilters((prev) => ({
+      ...prev,
+      brands: wasActive
+        ? prev.brands.filter((x) => x !== brandId)
+        : [...prev.brands, brandId],
+    }));
+    if (!wasActive) {
+      requestAnimationFrame(() => {
+        document
+          .getElementById("showcase")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
+
   if (loading) return <PageSkeleton />;
   if (failed || !data)
     return <ErrorState onRetry={() => setAttempt((n) => n + 1)} />;
@@ -1515,8 +1638,7 @@ export default function StorefrontHomePage() {
     return s ? s.isActive : true;
   };
 
-  // Toggle: prefer "brand_grid", fall back to legacy "category_grid",
-  // default to shown if neither is configured.
+  // Prefer "brand_grid" toggle, fall back to legacy "category_grid", default on.
   const brandSection =
     data.sections.find((s) => s.type === "brand_grid") ??
     data.sections.find((s) => s.type === "category_grid");
@@ -1558,7 +1680,6 @@ export default function StorefrontHomePage() {
   data.products.forEach((p) => {
     if (p.brandId) {
       brandCounts[p.brandId] = (brandCounts[p.brandId] ?? 0) + 1;
-      // Ensure brandName fallback exists even if brands collection is empty
       if (!brandNames[p.brandId] && p.brandName) {
         brandNames[p.brandId] = p.brandName;
       }
@@ -1603,7 +1724,12 @@ export default function StorefrontHomePage() {
       <HeroSlider slides={heroSlides} />
 
       {showBrandStrip && (
-        <BrandStrip brands={data.brands.slice(0, 6)} counts={brandCounts} />
+        <BrandStrip
+          brands={data.brands.slice(0, 6)}
+          counts={brandCounts}
+          activeBrandIds={filters.brands}
+          onToggleBrand={handleToggleBrand}
+        />
       )}
 
       {data.products.length > 0 ? (
@@ -1611,6 +1737,10 @@ export default function StorefrontHomePage() {
           tabs={tabs}
           categoryNames={categoryNames}
           brandNames={brandNames}
+          filters={filters}
+          onFiltersChange={setFilters}
+          activeKey={activeTabKey}
+          onActiveKeyChange={setActiveTabKey}
         />
       ) : (
         <section className={`${WRAP} py-12 text-center`}>
