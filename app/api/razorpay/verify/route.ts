@@ -1,7 +1,11 @@
 // app/api/razorpay/verify/route.ts
 import crypto from "crypto";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import {
+  FieldValue,
+  getFirestore,
+  type Firestore,
+} from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
@@ -31,6 +35,40 @@ function getRazorpay() {
   return new Razorpay({ key_id, key_secret });
 }
 
+// ---------------------------------------------------------------------------
+// Order number: SHERA-YYMMDD-XXXX
+//   e.g. SHERA-261118-A7K2
+//   YY = 2-digit year, MM = month, DD = day, XXXX = 4 random chars.
+// Alphabet excludes 0/O, 1/I/L to avoid human confusion when read aloud.
+// Retries up to 5 times if the candidate already exists that day.
+// ---------------------------------------------------------------------------
+const ORDER_NO_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+async function generateUniqueOrderNumber(db: Firestore): Promise<string> {
+  const now = new Date();
+  const yy = now.getFullYear().toString().slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let rand = "";
+    for (let i = 0; i < 4; i++) {
+      rand +=
+        ORDER_NO_ALPHABET[Math.floor(Math.random() * ORDER_NO_ALPHABET.length)];
+    }
+    const candidate = `SHERA-${yy}${mm}${dd}-${rand}`;
+
+    const existing = await db
+      .collection("orders")
+      .where("orderNumber", "==", candidate)
+      .limit(1)
+      .get();
+
+    if (existing.empty) return candidate;
+  }
+  throw new Error("Could not generate a unique order number");
+}
+
 type Body = {
   razorpay_order_id?: string;
   razorpay_payment_id?: string;
@@ -41,13 +79,6 @@ function fail(error: string, status = 400) {
   return NextResponse.json({ verified: false, error }, { status });
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/razorpay/verify
-// 1. Signature verify
-// 2. Payment captured confirm
-// 3. payment_sessions se order data uthao
-// 4. AB orders doc banao (sirf successful payment ke baad)
-// ---------------------------------------------------------------------------
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -117,7 +148,6 @@ export async function POST(req: Request) {
     const session = sessionDoc.data();
 
     if (session.status === "consumed") {
-      // Pehle se order ban chuka hai — idempotent
       const existing = await db
         .collection("orders")
         .where("razorpayOrderId", "==", razorpay_order_id)
@@ -126,6 +156,9 @@ export async function POST(req: Request) {
       return NextResponse.json({
         verified: true,
         orderId: existing.empty ? null : existing.docs[0].id,
+        orderNumber: existing.empty
+          ? null
+          : (existing.docs[0].data()?.orderNumber ?? null),
         paymentStatus: "captured",
       });
     }
@@ -138,7 +171,10 @@ export async function POST(req: Request) {
       return fail("Amount mismatch");
     }
 
-    // ---------- 4. AB order banao ----------
+    // ---------- 4. Order number generate ----------
+    const orderNumber = await generateUniqueOrderNumber(db);
+
+    // ---------- 5. AB order banao ----------
     const orderRef = db.collection("orders").doc();
     const orderId = orderRef.id;
     const paymentRef = db.collection("payments").doc();
@@ -147,8 +183,8 @@ export async function POST(req: Request) {
     const batch = db.batch();
 
     batch.set(orderRef, {
-      orderId,
-      orderNumber: orderId,
+      orderId, // Firestore doc id (internal)
+      orderNumber, // SHERA-YYMMDD-XXXX (customer-facing)
       userId: session.userId,
       email: session.email,
       phone: session.phone,
@@ -174,6 +210,7 @@ export async function POST(req: Request) {
     batch.set(paymentRef, {
       paymentId,
       orderId,
+      orderNumber, // same number for easy join
       userId: session.userId,
       provider: "razorpay",
       providerOrderId: razorpay_order_id,
@@ -188,13 +225,12 @@ export async function POST(req: Request) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Session consumed mark + delete
     batch.update(sessionDoc.ref, { status: "consumed" });
     batch.delete(sessionDoc.ref);
 
     await batch.commit();
 
-    // ---------- 5. Email ----------
+    // ---------- 6. Email (same orderNumber pass karo) ----------
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     try {
       await fetch(`${siteUrl}/api/orders/confirm`, {
@@ -202,7 +238,7 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
-          orderNumber: orderId,
+          orderNumber, // ← SHERA-YYMMDD-XXXX
           email: session.email,
           customerName: session.shippingAddress?.fullName,
           items: session.items,
@@ -222,6 +258,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       verified: true,
       orderId,
+      orderNumber,
       paymentStatus: "captured",
     });
   } catch (err) {

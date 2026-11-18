@@ -94,23 +94,6 @@ export default function StorefrontLayout({
           </h2>
 
           <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-            {/* Footer construction notice */}
-            <div
-              role="note"
-              className="mb-6 flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-200"
-            >
-              <span aria-hidden="true" className="text-base leading-none">
-                🚧
-              </span>
-              <p>
-                <span className="font-semibold text-amber-100">
-                  Site under construction.
-                </span>{" "}
-                Please do not place any orders — we&apos;re still finishing the
-                store and checkout.
-              </p>
-            </div>
-
             <div className="grid grid-cols-2 gap-6 md:grid-cols-4 md:gap-8">
               {/* Brand block */}
               <div className="col-span-2 md:col-span-1">
