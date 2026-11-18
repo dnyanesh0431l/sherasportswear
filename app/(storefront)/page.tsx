@@ -317,9 +317,9 @@ function NoScrollbars() {
 // Respects the `sortOrder` set in admin/settings (data.brands is pre-sorted).
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Brand strip — mobile = rounded-square scroll avatars, desktop = horizontal
-// scroll cards with left square thumbnail. Brand images are square, so the
-// thumbnails use `object-cover` (square-in-square → no crop).
+// Brand strip — mobile = circular scroll avatars, desktop = horizontal scroll
+// cards with left square thumbnail. Brand images are square, so mobile uses
+// `object-cover` inside a circle (center crop) and desktop uses square-in-square.
 // Order comes from admin/settings (data.brands is pre-sorted by sortOrder).
 // ---------------------------------------------------------------------------
 function BrandStrip({
@@ -339,9 +339,9 @@ function BrandStrip({
 
   return (
     <section className={`${WRAP} pt-3`} aria-label="Shop by brand">
-      {/* ===================== Mobile: rounded-square thumbnails ===================== */}
+      {/* ===================== Mobile: circular avatars ===================== */}
       <div
-        className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3 overflow-x-auto px-4 md:hidden`}
+        className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3.5 overflow-x-auto px-4 md:hidden`}
       >
         {brands.map((b) => {
           const active = isActive(b.id);
@@ -355,10 +355,10 @@ function BrandStrip({
               className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
             >
               <span
-                className={`relative grid h-[56px] w-[56px] place-items-center overflow-hidden rounded-xl border-2 bg-white transition-colors ${
+                className={`relative grid h-[56px] w-[56px] place-items-center overflow-hidden rounded-full border-2 bg-white transition-colors ${
                   active
                     ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
-                    : "border-neutral-200"
+                    : "border-neutral-300"
                 }`}
               >
                 {b.image ? (
@@ -376,7 +376,7 @@ function BrandStrip({
                   </span>
                 )}
                 {active && (
-                  <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
                     <Check className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
                 )}
@@ -395,7 +395,6 @@ function BrandStrip({
 
       {/* ===================== Desktop: scroll cards, left square thumb ===================== */}
       <div className="relative hidden md:block">
-        {/* Right fade hint */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white to-transparent"
@@ -418,7 +417,6 @@ function BrandStrip({
                     : "bg-neutral-100 hover:bg-neutral-200"
                 }`}
               >
-                {/* 56×56 square brand image */}
                 <span
                   className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-white ${
                     active ? "border-white/20" : "border-neutral-200"
@@ -441,7 +439,6 @@ function BrandStrip({
                   )}
                 </span>
 
-                {/* Name + count */}
                 <span className="min-w-0 flex-1">
                   <span
                     className={`block truncate text-[13px] font-black uppercase leading-tight ${
