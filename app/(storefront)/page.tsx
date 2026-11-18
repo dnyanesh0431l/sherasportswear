@@ -214,6 +214,36 @@ function colorHex(name: string): string {
   return "#d4d4d4";
 }
 
+// ---------------------------------------------------------------------------
+// Gender matching
+// ---------------------------------------------------------------------------
+/**
+ * A product's gender "fits" a set of selected gender filters when:
+ *   - no filter is selected (matches everything), OR
+ *   - the product's own gender is directly selected, OR
+ *   - the product is Unisex and the filter includes Men or Women
+ *     (unisex styles are for everyone).
+ *
+ * So:
+ *   filter=["men"]            → men + unisex
+ *   filter=["women"]          → women + unisex
+ *   filter=["unisex"]         → unisex only
+ *   filter=["men","women"]    → men + women + unisex
+ */
+function genderMatchesFilter(
+  productGender: string,
+  selected: string[],
+): boolean {
+  if (!selected.length) return true;
+  if (selected.includes(productGender)) return true;
+  if (
+    productGender === "unisex" &&
+    (selected.includes("men") || selected.includes("women"))
+  )
+    return true;
+  return false;
+}
+
 function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
   if (
     skip !== "categories" &&
@@ -223,7 +253,7 @@ function matches(p: Product, f: Filters, skip?: keyof Filters): boolean {
     return false;
   if (skip !== "brands" && f.brands.length && !f.brands.includes(p.brandId))
     return false;
-  if (skip !== "gender" && f.gender.length && !f.gender.includes(p.gender))
+  if (skip !== "gender" && !genderMatchesFilter(p.gender, f.gender))
     return false;
   if (
     skip !== "productTypes" &&
@@ -611,7 +641,9 @@ function FilterPanel({
               label={GENDER_LABEL[g]}
               checked={filters.gender.includes(g)}
               onChange={() => toggle("gender", g)}
-              count={count("gender", (p) => p.gender === g)}
+              // Count reflects exactly what checking this box yields —
+              // e.g. "Men" includes unisex styles.
+              count={count("gender", (p) => genderMatchesFilter(p.gender, [g]))}
             />
           ))}
         </FilterGroup>
@@ -812,11 +844,9 @@ function Showcase({
   categoryNames: Record<string, string>;
   brandNames: Record<string, string>;
 }) {
-  // The FIRST tab is always "__all__" (All products), so default selection
-  // is "All products" — no collection is pre-selected.
-  const [activeKey, setActiveKey] = useState<string | undefined>(
-    tabs[0]?.key,
-  );
+  // The first tab is always "__all__" (All products), so nothing is
+  // pre-selected on load.
+  const [activeKey, setActiveKey] = useState<string | undefined>(tabs[0]?.key);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>("featured");
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -1455,9 +1485,7 @@ export default function StorefrontHomePage() {
   });
 
   // ---- Showcase tabs
-  // IMPORTANT: The first tab is ALWAYS "All products" so the page opens with
-  // every product visible and no collection pre-selected. Collection tabs
-  // follow (only collections that actually have products).
+  // "All products" is always the first tab and default selection.
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
 
   const tabs: Tab[] = [
