@@ -136,6 +136,8 @@ export default function NewProductPage() {
   // Variant fields
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
+  const [customColors, setCustomColors] = useState<string[]>([]);
+  const [newColorInput, setNewColorInput] = useState("");
   const [variants, setVariants] = useState<Variant[]>([]);
 
   // Media
@@ -152,6 +154,9 @@ export default function NewProductPage() {
     null | "brand" | "category" | "collection"
   >(null);
   const [quickAddValue, setQuickAddValue] = useState("");
+
+  // Merged palette — built-in + anything custom added this session
+  const allColorOptions = [...COLOR_OPTIONS, ...customColors];
 
   // Reset transient flags on every mount so a fresh visit never shows
   // "Saving…" / uploading spinner from a previous session.
@@ -238,6 +243,29 @@ export default function NewProductPage() {
     setColors((prev) =>
       prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
     );
+
+  const handleAddCustomColor = () => {
+    const v = newColorInput.trim();
+    if (!v) return;
+    if (v.length > 30) {
+      toast.error("Color name is too long (max 30 characters)");
+      return;
+    }
+    const all = [...COLOR_OPTIONS, ...customColors];
+    const match = all.find((c) => c.toLowerCase() === v.toLowerCase());
+    if (match) {
+      // Already in the palette — just make sure it's selected
+      if (!colors.includes(match)) {
+        setColors((prev) => [...prev, match]);
+      }
+      setNewColorInput("");
+      return;
+    }
+    setCustomColors((prev) => [...prev, v]);
+    setColors((prev) => [...prev, v]);
+    setNewColorInput("");
+    toast.success(`Color "${v}" added`);
+  };
 
   const updateVariant = (
     index: number,
@@ -884,7 +912,7 @@ export default function NewProductPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {COLOR_OPTIONS.map((c) => {
+                  {allColorOptions.map((c) => {
                     const active = colors.includes(c);
                     return (
                       <button
@@ -901,6 +929,32 @@ export default function NewProductPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Add a custom color */}
+                <div className="flex gap-1 mt-1.5">
+                  <input
+                    value={newColorInput}
+                    onChange={(e) => setNewColorInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCustomColor();
+                      }
+                    }}
+                    placeholder="Add a custom color…"
+                    maxLength={30}
+                    className={`${inputCls} flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomColor}
+                    disabled={!newColorInput.trim()}
+                    title="Add custom color"
+                    className="shrink-0 inline-flex items-center justify-center gap-1 border border-blue-500 bg-blue-500 text-white px-2.5 text-xs font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
                 </div>
               </div>
 

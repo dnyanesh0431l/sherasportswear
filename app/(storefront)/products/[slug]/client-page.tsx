@@ -1095,7 +1095,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
               )}
               <Disclosure title="Shipping and returns">
                 <p>
-                  A flat shipping fee of 80% applies to all orders. No
+                  A flat shipping fee of 80₹ applies to all orders. No
                   additional taxes are charged. All orders are final and cannot
                   be cancelled or returned once placed.
                 </p>
