@@ -556,7 +556,7 @@ function ProductCard({ product }: { product: Product }) {
           )}
 
           {discount > 0 && (
-            <span className="absolute left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-neutral-950">
+            <span className="absolute bg-neutral-100 left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-neutral-950">
               {discount}% off
             </span>
           )}

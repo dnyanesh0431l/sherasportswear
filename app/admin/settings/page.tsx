@@ -67,7 +67,7 @@ const KIND_META: Record<Kind, KindMeta> = {
     label: "Brands",
     singular: "Brand",
     collectionName: "brands",
-    hasSortOrder: false,
+    hasSortOrder: true, // ← now reorderable
     hasDescription: false,
     storagePath: "brands",
     description: "Product manufacturers shown on the storefront.",
@@ -124,10 +124,6 @@ const sortItems = (items: Item[], kind: Kind): Item[] => {
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8 MB pre-compression
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
-/**
- * Downscale + re-encode to WebP client-side to keep Storage cheap and admin
- * fast. Falls back to the original file if the browser can't handle it.
- */
 async function compressImage(file: File): Promise<File> {
   if (typeof window === "undefined" || !file.type.startsWith("image/")) {
     return file;
@@ -216,12 +212,13 @@ export default function SettingsPage() {
     setLoadingByKind((p) => ({ ...p, [kind]: true }));
     setErrorByKind((p) => ({ ...p, [kind]: null }));
     try {
-      const q = meta.hasSortOrder
-        ? query(
-            collection(db, meta.collectionName),
-            orderBy("sortOrder", "asc"),
-          )
-        : query(collection(db, meta.collectionName), orderBy("name", "asc"));
+      // Always order by name at the Firestore level. We sort by sortOrder
+      // client-side. Doing `orderBy("sortOrder")` here would silently drop
+      // any doc missing that field (legacy brands), so avoid it.
+      const q = query(
+        collection(db, meta.collectionName),
+        orderBy("name", "asc"),
+      );
       const snap = await getDocs(q);
       const rows: Item[] = snap.docs.map((d) => {
         const data = d.data();
@@ -260,12 +257,15 @@ export default function SettingsPage() {
   const meta = KIND_META[tab];
 
   const nextSortOrder = useMemo(() => {
+    const hasLegacy = items.some((i) => typeof i.sortOrder !== "number");
     const max = items.reduce(
       (m, i) =>
         typeof i.sortOrder === "number" ? Math.max(m, i.sortOrder) : m,
       0,
     );
-    return max + 1;
+    // Legacy items fall back to 999 in `sortItems`. New items must land after
+    // them, so 1000+. Otherwise new items sort to the top of a legacy list.
+    return (hasLegacy ? Math.max(max, 999) : max) + 1;
   }, [items]);
 
   /* --------------- upload helper --------------- */
@@ -297,13 +297,12 @@ export default function SettingsPage() {
   const deleteStorageObject = async (url: string | null | undefined) => {
     if (!url) return;
     try {
-      // Only attempt delete if it's a Firebase Storage URL we own.
       const m = url.match(/\/o\/([^?]+)/);
       if (!m) return;
       const path = decodeURIComponent(m[1]);
       await deleteObject(storageRef(storage, path));
     } catch {
-      // Non-fatal — orphaned files are just cleanup debt
+      // Non-fatal
     }
   };
 
@@ -455,7 +454,6 @@ export default function SettingsPage() {
       if (editFile) {
         const uploaded = await uploadImage(editFile, meta.storagePath);
         nextImage = uploaded.url;
-        // Best-effort cleanup of the old file
         await deleteStorageObject(item.image);
       } else if (editRemoveImage) {
         nextImage = null;
@@ -530,6 +528,9 @@ export default function SettingsPage() {
   };
 
   /* --------------- reorder --------------- */
+  // Renumber 1..N after the swap. This works whether items already have
+  // sequential sortOrders, mixed, or none at all (legacy brands). Only items
+  // whose value actually changed get written.
   const move = async (item: Item, dir: -1 | 1) => {
     if (!meta.hasSortOrder) return;
     const sorted = items;
@@ -538,33 +539,29 @@ export default function SettingsPage() {
     const swapIdx = idx + dir;
     if (swapIdx < 0 || swapIdx >= sorted.length) return;
 
-    const a = sorted[idx];
-    const b = sorted[swapIdx];
-    const aOrder = typeof a.sortOrder === "number" ? a.sortOrder : idx + 1;
-    const bOrder = typeof b.sortOrder === "number" ? b.sortOrder : swapIdx + 1;
+    const reordered = [...sorted];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+
+    const updates: { id: string; order: number }[] = [];
+    reordered.forEach((x, i) => {
+      const newOrder = i + 1;
+      if (x.sortOrder !== newOrder) updates.push({ id: x.id, order: newOrder });
+    });
+    if (updates.length === 0) return;
 
     setBusyId(item.id);
     try {
-      await Promise.all([
-        updateDoc(doc(db, meta.collectionName, a.id), {
-          sortOrder: bOrder,
-          updatedAt: serverTimestamp(),
-        }),
-        updateDoc(doc(db, meta.collectionName, b.id), {
-          sortOrder: aOrder,
-          updatedAt: serverTimestamp(),
-        }),
-      ]);
+      await Promise.all(
+        updates.map((u) =>
+          updateDoc(doc(db, meta.collectionName, u.id), {
+            sortOrder: u.order,
+            updatedAt: serverTimestamp(),
+          }),
+        ),
+      );
       setItemsByKind((p) => ({
         ...p,
-        [tab]: sortItems(
-          p[tab].map((x) => {
-            if (x.id === a.id) return { ...x, sortOrder: bOrder };
-            if (x.id === b.id) return { ...x, sortOrder: aOrder };
-            return x;
-          }),
-          tab,
-        ),
+        [tab]: reordered.map((x, i) => ({ ...x, sortOrder: i + 1 })),
       }));
     } catch (e) {
       toast.error((e as Error)?.message || "Failed to reorder");
@@ -584,7 +581,6 @@ export default function SettingsPage() {
     setBusyId(item.id);
     try {
       await deleteDoc(doc(db, meta.collectionName, item.id));
-      // Best-effort cleanup of associated image
       await deleteStorageObject(item.image);
       setItemsByKind((p) => ({
         ...p,
@@ -671,7 +667,6 @@ export default function SettingsPage() {
       {/* Create bar */}
       <div className="bg-white border border-neutral-200 p-3">
         <div className="flex gap-2 flex-col sm:flex-row">
-          {/* Image picker */}
           <label
             className="relative flex h-16 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-dashed border-neutral-300 bg-neutral-50 hover:bg-neutral-100"
             title="Click to upload image"
@@ -893,7 +888,6 @@ export default function SettingsPage() {
                   ) : (
                     /* ---------------- View mode ---------------- */
                     <div className="flex items-center gap-2">
-                      {/* Order controls */}
                       {meta.hasSortOrder && (
                         <div className="flex flex-col -my-1 shrink-0">
                           <button
@@ -915,7 +909,6 @@ export default function SettingsPage() {
                         </div>
                       )}
 
-                      {/* Thumbnail */}
                       <div className="h-10 w-10 shrink-0 overflow-hidden rounded border border-neutral-200 bg-neutral-100">
                         {item.image ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -931,7 +924,6 @@ export default function SettingsPage() {
                         )}
                       </div>
 
-                      {/* Name / slug / description */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-2 min-w-0">
                           <button
@@ -956,7 +948,6 @@ export default function SettingsPage() {
                         )}
                       </div>
 
-                      {/* Status */}
                       <button
                         onClick={() => toggleStatus(item)}
                         disabled={busy}
@@ -970,7 +961,6 @@ export default function SettingsPage() {
                         {inactive ? "Inactive" : "Active"}
                       </button>
 
-                      {/* Delete */}
                       <button
                         onClick={() => handleDelete(item)}
                         disabled={busy}
@@ -992,7 +982,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Footer hint */}
       {items.length > 0 && (
         <p className="text-[10px] text-neutral-400 text-center">
           Click the name or thumbnail to edit · Toggle the pill to
