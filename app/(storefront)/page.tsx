@@ -316,6 +316,10 @@ function NoScrollbars() {
 // Brand strip — toggle buttons that filter the products below.
 // Respects the `sortOrder` set in admin/settings (data.brands is pre-sorted).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Brand strip — horizontal scroll on every breakpoint. Order comes from
+// admin/settings (data.brands is pre-sorted by sortOrder → name).
+// ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
   counts,
@@ -333,131 +337,83 @@ function BrandStrip({
 
   return (
     <section className={`${WRAP} pt-3`} aria-label="Shop by brand">
-      <div
-        className="hidden gap-2.5 md:grid"
-        style={{
-          gridTemplateColumns: `repeat(${Math.min(brands.length, 6)}, minmax(0, 1fr))`,
-        }}
-      >
-        {brands.map((b) => {
-          const active = isActive(b.id);
-          return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => onToggleBrand(b.id)}
-              aria-pressed={active}
-              aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
-              className={`group relative flex h-[60px] cursor-pointer overflow-hidden rounded-md text-left transition-colors ${FOCUS} ${
-                active
-                  ? "bg-neutral-950 ring-2 ring-[#ff5a1f] ring-offset-2"
-                  : "bg-neutral-100 hover:bg-neutral-200"
-              }`}
-            >
-              {b.image ? (
-                <img
-                  src={b.image}
-                  alt=""
-                  loading="lazy"
-                  className={`absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110 ${
-                    active ? "opacity-40" : ""
-                  }`}
-                  style={{
-                    maskImage:
-                      "linear-gradient(to right, transparent, black 45%)",
-                    WebkitMaskImage:
-                      "linear-gradient(to right, transparent, black 45%)",
-                  }}
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className={`absolute right-0 top-0 grid h-full w-[50%] select-none place-items-center text-4xl font-black uppercase ${
-                    active ? "text-white/20" : "text-white/30"
-                  }`}
-                  style={{ background: brandColor(b.name) }}
-                >
-                  {b.name.charAt(0)}
-                </span>
-              )}
-              <div className="relative z-10 flex flex-col justify-center pl-3.5 pr-6">
-                <h3
-                  className={`font-display text-[13px] font-black uppercase leading-tight ${
-                    active ? "text-white" : "text-neutral-950"
-                  }`}
-                >
-                  {b.name}
-                </h3>
-                <span
-                  className={`text-[11px] font-medium ${
-                    active ? "text-white/70" : "text-neutral-600"
-                  }`}
-                >
-                  {counts[b.id] ?? 0} styles
-                </span>
-              </div>
-              {active && (
-                <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white">
-                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Scrollable row — same layout on mobile & desktop */}
+      <div className="relative">
+        {/* Right fade to hint "more to scroll" */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-white to-transparent"
+        />
 
-      {/* Mobile */}
-      <div
-        className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3.5 overflow-x-auto px-4 md:hidden`}
-      >
-        {brands.map((b) => {
-          const active = isActive(b.id);
-          return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() => onToggleBrand(b.id)}
-              aria-pressed={active}
-              aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
-              className={`flex w-[64px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
-            >
-              <span
-                className={`relative grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full border-2 transition-colors ${
+        <div
+          className={`${HIDE_SCROLLBAR} -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x snap-mandatory`}
+        >
+          {brands.map((b) => {
+            const active = isActive(b.id);
+            return (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => onToggleBrand(b.id)}
+                aria-pressed={active}
+                aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
+                className={`group relative flex h-[60px] w-[180px] shrink-0 snap-start cursor-pointer overflow-hidden rounded-md text-left transition-colors ${FOCUS} ${
                   active
-                    ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
-                    : "border-neutral-300"
+                    ? "bg-neutral-950 ring-2 ring-[#ff5a1f] ring-offset-2"
+                    : "bg-neutral-100 hover:bg-neutral-200"
                 }`}
               >
                 {b.image ? (
                   <img
                     src={b.image}
                     alt=""
-                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    className={`absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110 ${
+                      active ? "opacity-40" : ""
+                    }`}
+                    style={{
+                      maskImage:
+                        "linear-gradient(to right, transparent, black 45%)",
+                      WebkitMaskImage:
+                        "linear-gradient(to right, transparent, black 45%)",
+                    }}
                   />
                 ) : (
                   <span
-                    className="grid h-full w-full place-items-center text-base font-black uppercase text-white"
+                    aria-hidden
+                    className={`absolute right-0 top-0 grid h-full w-[50%] select-none place-items-center text-4xl font-black uppercase ${
+                      active ? "text-white/20" : "text-white/30"
+                    }`}
                     style={{ background: brandColor(b.name) }}
                   >
                     {b.name.charAt(0)}
                   </span>
                 )}
+                <div className="relative z-10 flex flex-col justify-center pl-3.5 pr-6">
+                  <h3
+                    className={`font-display text-[13px] font-black uppercase leading-tight truncate ${
+                      active ? "text-white" : "text-neutral-950"
+                    }`}
+                  >
+                    {b.name}
+                  </h3>
+                  <span
+                    className={`text-[11px] font-medium ${
+                      active ? "text-white/70" : "text-neutral-600"
+                    }`}
+                  >
+                    {counts[b.id] ?? 0} styles
+                  </span>
+                </div>
                 {active && (
-                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white">
+                  <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white">
                     <Check className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
                 )}
-              </span>
-              <span
-                className={`text-center text-[11px] font-semibold ${
-                  active ? "text-[#ff5a1f]" : "text-neutral-900"
-                }`}
-              >
-                {b.name}
-              </span>
-            </button>
-          );
-        })}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Active filter bar */}
