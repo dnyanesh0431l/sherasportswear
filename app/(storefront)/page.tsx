@@ -22,7 +22,7 @@ import { useWishlist } from "./../context/wishlist-context";
 import { HeroSlider, type HeroSlide } from "./_components/HeroSlider";
 
 // ---------------------------------------------------------------------------
-// Types — aligned with scripts/seed.ts
+// Types
 // ---------------------------------------------------------------------------
 type Banner = {
   id: string;
@@ -721,7 +721,6 @@ function FilterPanel({
   );
 }
 
-// Mobile bottom sheet
 function FilterSheet({
   open,
   onClose,
@@ -802,7 +801,7 @@ function FilterSheet({
 }
 
 // ---------------------------------------------------------------------------
-// Showcase: collection tabs + attribute filters + sort + load more
+// Showcase
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
@@ -813,7 +812,11 @@ function Showcase({
   categoryNames: Record<string, string>;
   brandNames: Record<string, string>;
 }) {
-  const [activeKey, setActiveKey] = useState(tabs[0]?.key);
+  // The FIRST tab is always "__all__" (All products), so default selection
+  // is "All products" — no collection is pre-selected.
+  const [activeKey, setActiveKey] = useState<string | undefined>(
+    tabs[0]?.key,
+  );
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>("featured");
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -1104,7 +1107,9 @@ function Showcase({
                   href={tab.href}
                   className={`inline-flex items-center gap-1.5 text-[13px] font-bold text-neutral-950 hover:underline ${FOCUS}`}
                 >
-                  See the full {tab.label.toLowerCase()} range{" "}
+                  {tab.key === "__all__"
+                    ? "Browse all products"
+                    : `See the full ${tab.label.toLowerCase()} range`}{" "}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               )}
@@ -1450,8 +1455,19 @@ export default function StorefrontHomePage() {
   });
 
   // ---- Showcase tabs
+  // IMPORTANT: The first tab is ALWAYS "All products" so the page opens with
+  // every product visible and no collection pre-selected. Collection tabs
+  // follow (only collections that actually have products).
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
-  const tabs: Tab[] = [];
+
+  const tabs: Tab[] = [
+    {
+      key: "__all__",
+      label: "All products",
+      href: "/products",
+      products: data.products,
+    },
+  ];
 
   data.collections.forEach((col) => {
     const list = data.products.filter((p) => p.collectionIds.includes(col.id));
@@ -1469,17 +1485,6 @@ export default function StorefrontHomePage() {
     }
   });
 
-  const coveredIds = new Set(tabs.flatMap((t) => t.products.map((p) => p.id)));
-  const uncovered = data.products.filter((p) => !coveredIds.has(p.id));
-  if (uncovered.length || tabs.length === 0) {
-    tabs.push({
-      key: "__all__",
-      label: "All products",
-      href: "/products",
-      products: data.products,
-    });
-  }
-
   return (
     <div className="overflow-x-clip bg-white text-neutral-950">
       <NoScrollbars />
@@ -1493,7 +1498,7 @@ export default function StorefrontHomePage() {
         />
       )}
 
-      {tabs.length > 0 ? (
+      {data.products.length > 0 ? (
         <Showcase
           tabs={tabs}
           categoryNames={categoryNames}
