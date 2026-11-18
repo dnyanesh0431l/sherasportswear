@@ -318,9 +318,9 @@ function NoScrollbars() {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Brand strip — mobile = circular scroll avatars, desktop = horizontal scroll
-// cards with left square thumbnail. Brand images are square, so mobile uses
-// `object-cover` inside a circle (center crop) and desktop uses square-in-square.
-// Order comes from admin/settings (data.brands is pre-sorted by sortOrder).
+// cards with left square thumb. Brand images are square; the circle shows the
+// center square crop (object-cover). Fallback letter is always rendered behind
+// the img, so broken URLs gracefully degrade to the letter avatar.
 // ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
@@ -355,28 +355,37 @@ function BrandStrip({
               className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
             >
               <span
-                className={`relative grid h-[56px] w-[56px] place-items-center overflow-hidden rounded-full border-2 bg-white transition-colors ${
+                className={`relative h-[56px] w-[56px] overflow-hidden rounded-full border-2 bg-white transition-colors ${
                   active
                     ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
                     : "border-neutral-300"
                 }`}
               >
-                {b.image ? (
+                {/* Letter fallback — always rendered behind the img */}
+                <span
+                  aria-hidden
+                  className="absolute inset-0 grid place-items-center text-base font-black uppercase text-white"
+                  style={{ background: brandColor(b.name) }}
+                >
+                  {b.name.charAt(0)}
+                </span>
+
+                {/* Image — absolute fills container reliably on every mobile browser.
+                    On error hides itself so the letter fallback shows through. */}
+                {b.image && (
                   <img
                     src={b.image}
                     alt=""
-                    className="h-full w-full object-cover"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
+                    }}
                   />
-                ) : (
-                  <span
-                    className="grid h-full w-full place-items-center text-base font-black uppercase text-white"
-                    style={{ background: brandColor(b.name) }}
-                  >
-                    {b.name.charAt(0)}
-                  </span>
                 )}
+
                 {active && (
-                  <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
+                  <span className="absolute -right-0.5 -top-0.5 z-10 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
                     <Check className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
                 )}
@@ -422,20 +431,25 @@ function BrandStrip({
                     active ? "border-white/20" : "border-neutral-200"
                   }`}
                 >
-                  {b.image ? (
+                  <span
+                    aria-hidden
+                    className="absolute inset-0 grid place-items-center text-lg font-black uppercase text-white"
+                    style={{ background: brandColor(b.name) }}
+                  >
+                    {b.name.charAt(0)}
+                  </span>
+
+                  {b.image && (
                     <img
                       src={b.image}
                       alt=""
                       loading="lazy"
-                      className="h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display =
+                          "none";
+                      }}
                     />
-                  ) : (
-                    <span
-                      className="grid h-full w-full place-items-center text-lg font-black uppercase text-white"
-                      style={{ background: brandColor(b.name) }}
-                    >
-                      {b.name.charAt(0)}
-                    </span>
                   )}
                 </span>
 
