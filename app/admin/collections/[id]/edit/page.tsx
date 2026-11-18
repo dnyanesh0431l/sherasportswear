@@ -1,16 +1,18 @@
 "use client";
 
-import { db, storage } from "@/lib/firebase/client"; // Ensure storage is exported
+import { db, storage } from "@/lib/firebase/client";
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
   doc,
   getDoc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import {
@@ -35,7 +37,10 @@ type ProductOption = {
   name: string;
   image: string | null;
   status: string;
+  createdAtMs: number;
 };
+
+const BATCH_LIMIT = 400; // stay under Firestore's 500-op hard cap
 
 export default function EditCollectionPage() {
   const params = useParams<{ id: string }>();
@@ -66,33 +71,56 @@ export default function EditCollectionPage() {
   const [productsLoading, setProductsLoading] = useState(true);
   const [productSearch, setProductSearch] = useState("");
 
+  // Membership snapshot — the IDs actually present in products.collectionIds
+  // at load time. Used to compute the write-diff on save.
+  const [loadedFromProducts, setLoadedFromProducts] = useState<Set<string>>(
+    new Set(),
+  );
+  const [driftCount, setDriftCount] = useState(0);
+
   useEffect(() => {
     if (!id) return;
     (async () => {
       try {
-        const [colSnap, prodSnap] = await Promise.all([
+        // --- Collections doc + products + true membership -----------------
+        // NOTE: no orderBy("createdAt") — that silently drops any product
+        // that lacks the field. We sort client-side instead.
+        const [colSnap, prodSnap, memberSnap] = await Promise.all([
           getDoc(doc(db, "collections", id)),
+          getDocs(collection(db, "products")),
           getDocs(
-            query(collection(db, "products"), orderBy("createdAt", "desc")),
+            query(
+              collection(db, "products"),
+              where("collectionIds", "array-contains", id),
+            ),
           ),
         ]);
 
-        setAllProducts(
-          prodSnap.docs.map((d) => {
+        const products: ProductOption[] = prodSnap.docs
+          .map((d) => {
             const data = d.data();
             return {
               id: d.id,
               name: data.name || d.id,
               image: Array.isArray(data.images) ? data.images[0] || null : null,
               status: data.status || "draft",
+              createdAtMs: data.createdAt?.toMillis?.() ?? 0,
             };
-          }),
-        );
+          })
+          .sort((a, b) => b.createdAtMs - a.createdAtMs);
+        setAllProducts(products);
+        const existingIds = new Set(products.map((p) => p.id));
+
+        // Source of truth for the storefront: products whose collectionIds
+        // contains this collection's id.
+        const actualIds = new Set(memberSnap.docs.map((d) => d.id));
+        setLoadedFromProducts(actualIds);
 
         if (!colSnap.exists()) {
           setNotFound(true);
           return;
         }
+
         const c = colSnap.data();
         setName(c.name || "");
         setSlug(c.slug || "");
@@ -102,7 +130,21 @@ export default function EditCollectionPage() {
         setStatus((c.status as any) || "active");
         setSeoTitle(c.seoTitle || "");
         setSeoDescription(c.seoDescription || "");
-        setProductIds(Array.isArray(c.productIds) ? c.productIds : []);
+
+        // Legacy array on the collection doc. Filter out any dead IDs and
+        // union with the products-derived membership so the picker reflects
+        // reality regardless of which side last wrote.
+        const legacy = Array.isArray(c.productIds)
+          ? (c.productIds as string[]).filter((x) => existingIds.has(x))
+          : [];
+        const union = Array.from(new Set([...legacy, ...actualIds]));
+        setProductIds(union);
+
+        // How much are the two sources out of sync? Used for the badge.
+        const drift =
+          legacy.filter((x) => !actualIds.has(x)).length +
+          [...actualIds].filter((x) => !legacy.includes(x)).length;
+        setDriftCount(drift);
       } catch (e) {
         toast.error((e as Error)?.message || "Failed to load collection");
       } finally {
@@ -158,9 +200,40 @@ export default function EditCollectionPage() {
 
   const removeImage = () => setImage("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!id) return;
+  const syncProductsToCollection = async (
+    collectionId: string,
+    desired: Set<string>,
+    actual: Set<string>,
+  ) => {
+    const toAdd = [...desired].filter((x) => !actual.has(x));
+    const toRemove = [...actual].filter((x) => !desired.has(x));
+
+    for (let i = 0; i < toAdd.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      for (const pid of toAdd.slice(i, i + BATCH_LIMIT)) {
+        batch.update(doc(db, "products", pid), {
+          collectionIds: arrayUnion(collectionId),
+        });
+      }
+      await batch.commit();
+    }
+
+    for (let i = 0; i < toRemove.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(db);
+      for (const pid of toRemove.slice(i, i + BATCH_LIMIT)) {
+        batch.update(doc(db, "products", pid), {
+          collectionIds: arrayRemove(collectionId),
+        });
+      }
+      await batch.commit();
+    }
+
+    return { added: toAdd.length, removed: toRemove.length };
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!id || saving) return;
     if (!name.trim() || !slug.trim()) {
       toast.error("Name and URL slug are required");
       return;
@@ -172,33 +245,54 @@ export default function EditCollectionPage() {
 
     setSaving(true);
     try {
+      // Slug uniqueness
       const dup = await getDocs(
         query(collection(db, "collections"), where("slug", "==", slug.trim())),
       );
       const conflict = dup.docs.find((d) => d.id !== id);
       if (conflict) {
-        toast.error(`URL slug "${slug}" is already used by another collection`);
-        setSaving(false);
+        toast.error(
+          `URL slug "${slug}" is already used by another collection`,
+        );
         return;
       }
 
+      // Only persist IDs that still exist as products (drops stale refs)
+      const existingIds = new Set(allProducts.map((p) => p.id));
+      const cleanProductIds = productIds.filter((pid) => existingIds.has(pid));
+
+      // 1. Write the collection doc (both productIds and metadata)
       await updateDoc(doc(db, "collections", id), {
         name: name.trim(),
         slug: slug.trim(),
         description: description.trim(),
-        image: image,
+        image,
         sortOrder: parseInt(sortOrder, 10) || 0,
         status,
-        productIds,
+        productIds: cleanProductIds, // kept for admin/back-compat
         seoTitle: seoTitle.trim(),
         seoDescription: seoDescription.trim(),
         updatedAt: serverTimestamp(),
       });
 
-      toast.success("Collection updated successfully");
+      // 2. Mirror onto every product's collectionIds so the storefront's
+      //    array-contains query actually finds them. Uses write diffs, so
+      //    only changed products are touched.
+      const { added, removed } = await syncProductsToCollection(
+        id,
+        new Set(cleanProductIds),
+        loadedFromProducts,
+      );
+
+      toast.success(
+        added || removed
+          ? `Collection saved · ${added} added, ${removed} removed on products`
+          : "Collection updated successfully",
+      );
       router.push("/admin/collections");
     } catch (e) {
       toast.error((e as Error)?.message || "Update failed");
+    } finally {
       setSaving(false);
     }
   };
@@ -253,7 +347,8 @@ export default function EditCollectionPage() {
             Cancel
           </Link>
           <button
-            onClick={handleSubmit}
+            type="button"
+            onClick={() => handleSubmit()}
             disabled={saving || uploading}
             className="inline-flex items-center gap-2 bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
           >
@@ -271,7 +366,7 @@ export default function EditCollectionPage() {
         onSubmit={handleSubmit}
         className="grid grid-cols-1 md:grid-cols-3 gap-4"
       >
-        {/* LEFT COLUMN (Main Details) */}
+        {/* LEFT COLUMN */}
         <div className="md:col-span-2 space-y-4">
           <section className="bg-white border border-neutral-200 p-4 space-y-3">
             <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2">
@@ -387,10 +482,26 @@ export default function EditCollectionPage() {
               <h2 className="font-semibold text-sm text-neutral-900">
                 Assign Products
               </h2>
-              <span className="text-xs font-medium text-neutral-500 bg-neutral-100 border border-neutral-200 px-2 py-0.5">
-                {productIds.length} selected
-              </span>
+              <div className="flex items-center gap-2">
+                {driftCount > 0 && (
+                  <span
+                    title="The collection's productIds and the products' collectionIds were out of sync. Saving will fix this."
+                    className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5"
+                  >
+                    {driftCount} need sync
+                  </span>
+                )}
+                <span className="text-xs font-medium text-neutral-500 bg-neutral-100 border border-neutral-200 px-2 py-0.5">
+                  {productIds.length} selected
+                </span>
+              </div>
             </div>
+
+            <p className="text-[11px] text-neutral-500">
+              Saving updates both the collection and each product&apos;s
+              <code className="mx-1 bg-neutral-100 px-1">collectionIds</code>
+              field, so the storefront picks these up immediately.
+            </p>
 
             {productIds.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pb-1">
@@ -435,7 +546,9 @@ export default function EditCollectionPage() {
                 <div className="p-6 text-center">
                   <Package className="h-8 w-8 text-neutral-300 mx-auto" />
                   <p className="mt-2 text-sm text-neutral-500">
-                    No products match.
+                    {allProducts.length === 0
+                      ? "No products found in the database."
+                      : "No products match your search."}
                   </p>
                 </div>
               ) : (
@@ -465,7 +578,7 @@ export default function EditCollectionPage() {
                           {p.name}
                         </div>
                         <div className="text-[10px] text-neutral-500 truncate">
-                          {p.id}
+                          {p.id} · {p.status}
                         </div>
                       </div>
                       <div
@@ -510,7 +623,7 @@ export default function EditCollectionPage() {
           </section>
         </div>
 
-        {/* RIGHT COLUMN (Settings) */}
+        {/* RIGHT COLUMN */}
         <div className="space-y-4">
           <section className="bg-white border border-neutral-200 p-4 space-y-3">
             <h2 className="font-semibold text-sm text-neutral-900 border-b pb-2">

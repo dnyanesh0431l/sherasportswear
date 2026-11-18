@@ -13,7 +13,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { useWishlist } from "../../../context/wishlist-context";
 
@@ -42,7 +49,7 @@ type ProductCardData = {
 type SortKey = "featured" | "newest" | "price-asc" | "price-desc" | "discount";
 
 // ---------------------------------------------------------------------------
-// Layout tokens (same system as cart / checkout / product page)
+// Layout tokens
 // ---------------------------------------------------------------------------
 const WRAP = "mx-auto w-full max-w-[1200px] px-4 sm:px-6 lg:px-8";
 const HIDE_SCROLLBAR =
@@ -63,6 +70,23 @@ const formatINR = (paise: number) =>
 const discountPercent = (mrp: number, price: number) =>
   mrp <= price ? 0 : Math.round(((mrp - price) / mrp) * 100);
 
+// --- Helpers used to make matching resilient -------------------------------
+const decode = (s: string) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+const norm = (s: string) => decode(s).trim().toLowerCase();
+
+/** Only explicit "draft"/"inactive" hides an item. Missing status => visible. */
+const isVisible = (status: unknown): boolean => {
+  if (status === undefined || status === null) return true;
+  const s = String(status).toLowerCase();
+  return s !== "draft" && s !== "inactive" && s !== "archived";
+};
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "featured", label: "Featured" },
   { value: "newest", label: "Newest" },
@@ -72,7 +96,7 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Product card — flat, square image, no borders or shadows
+// Product card
 // ---------------------------------------------------------------------------
 function ProductCard({
   p,
@@ -123,7 +147,6 @@ function ProductCard({
         </p>
       </Link>
 
-      {/* Sits outside the link so we never nest a button inside an anchor */}
       <button
         type="button"
         onClick={onToggleWishlist}
@@ -145,7 +168,7 @@ function ProductCard({
 }
 
 // ---------------------------------------------------------------------------
-// Skeleton (also used as the Suspense fallback)
+// Skeleton
 // ---------------------------------------------------------------------------
 function CollectionSkeleton() {
   return (
@@ -198,8 +221,14 @@ function CollectionBody() {
   const [activeCat, setActiveCat] = useState("all");
   const [visible, setVisible] = useState(PAGE_SIZE);
 
+  // Guards against a slower, older load() overwriting a newer one.
+  const loadIdRef = useRef(0);
+
   const load = useCallback(async () => {
     if (!slug) return;
+    const myLoadId = ++loadIdRef.current;
+    const isStale = () => loadIdRef.current !== myLoadId;
+
     setLoading(true);
     setError(false);
     setCurrent(null);
@@ -209,19 +238,22 @@ function CollectionBody() {
     setVisible(PAGE_SIZE);
 
     try {
+      // ---- 1. Collections (fetch all, filter client-side) ---------------
+      // We do NOT filter by status server-side. Manually-created collections
+      // (or ones missing a `status` field) would otherwise be invisible.
       const [colSnap, catSnap] = await Promise.all([
-        getDocs(
-          query(collection(db, "collections"), where("status", "==", "active")),
-        ),
+        getDocs(collection(db, "collections")),
         getDocs(collection(db, "categories")).catch(() => null),
       ]);
+      if (isStale()) return;
 
       const cols: CollectionInfo[] = colSnap.docs
+        .filter((d) => isVisible(d.data().status))
         .map((d) => {
           const c = d.data();
           return {
             id: d.id,
-            name: c.name || "",
+            name: c.name || d.id,
             slug: c.slug || d.id,
             description: c.description || "",
             sortOrder: typeof c.sortOrder === "number" ? c.sortOrder : 999,
@@ -240,21 +272,40 @@ function CollectionBody() {
         setCategoryNames(names);
       }
 
-      const found = cols.find((c) => c.slug === slug) ?? null;
-      setCurrent(found);
-      if (!found) return;
+      // ---- 2. Match the requested slug --------------------------------
+      // Try in priority: exact slug, case-insensitive slug, by doc id.
+      const want = norm(slug);
+      const found =
+        cols.find((c) => c.slug === slug) ??
+        cols.find((c) => norm(c.slug) === want) ??
+        cols.find((c) => c.id === slug) ??
+        cols.find((c) => norm(c.id) === want) ??
+        null;
 
-      // Single array-contains query; status is filtered client-side so no
-      // composite index is required.
+      setCurrent(found);
+      if (!found) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[collection] not found", {
+            slug,
+            wanted: want,
+            available: cols.map((c) => ({ id: c.id, slug: c.slug })),
+          });
+        }
+        return;
+      }
+
+      // ---- 3. Products in this collection -----------------------------
+      // array-contains on the collection doc ID (exactly what admin saves).
       const pSnap = await getDocs(
         query(
           collection(db, "products"),
           where("collectionIds", "array-contains", found.id),
         ),
       );
+      if (isStale()) return;
 
       const list: ProductCardData[] = pSnap.docs
-        .filter((d) => d.data().status === "active")
+        .filter((d) => isVisible(d.data().status))
         .map((d) => {
           const p = d.data();
           return {
@@ -262,19 +313,45 @@ function CollectionBody() {
             name: p.name || "",
             slug: p.slug || d.id,
             basePricePaise:
-              typeof p.basePricePaise === "number" ? p.basePricePaise : 0,
-            mrpPaise: typeof p.mrpPaise === "number" ? p.mrpPaise : 0,
+              typeof p.basePricePaise === "number"
+                ? p.basePricePaise
+                : typeof p.pricePaise === "number"
+                  ? p.pricePaise
+                  : 0,
+            mrpPaise:
+              typeof p.mrpPaise === "number"
+                ? p.mrpPaise
+                : typeof p.basePricePaise === "number"
+                  ? p.basePricePaise
+                  : 0,
             image: Array.isArray(p.images) ? p.images[0] || "" : "",
             categoryId: p.categoryId || "",
             createdAtMs: p.createdAt?.toMillis?.() ?? 0,
           };
         });
+
+      if (process.env.NODE_ENV === "development") {
+        // Actionable diagnostic — if rawProducts > visibleProducts but list
+        // is 0, statuses are killing it; if rawProducts is 0, collectionIds
+        // on products is wrong.
+        console.info("[collection] loaded", {
+          slug,
+          collectionId: found.id,
+          rawProducts: pSnap.size,
+          visibleProducts: list.length,
+          hiddenByStatus: pSnap.docs
+            .filter((d) => !isVisible(d.data().status))
+            .map((d) => ({ id: d.id, status: d.data().status })),
+        });
+      }
+
       setProducts(list);
     } catch (e) {
+      if (isStale()) return;
       console.error("Error loading collection:", e);
       setError(true);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [slug]);
 
@@ -282,7 +359,7 @@ function CollectionBody() {
     load();
   }, [load]);
 
-  // ----- Category chips (only when the collection spans several categories)
+  // ----- Category chips
   const categoryIds = useMemo(
     () =>
       Array.from(new Set(products.map((p) => p.categoryId).filter(Boolean))),
@@ -336,10 +413,8 @@ function CollectionBody() {
     }
   };
 
-  // ----- Loading
   if (loading) return <CollectionSkeleton />;
 
-  // ----- Error / not found
   if (error || !current) {
     return (
       <div className="flex min-h-[75vh] flex-col items-center justify-center bg-white px-4 text-center">
@@ -420,7 +495,7 @@ function CollectionBody() {
           </ol>
         </nav>
 
-        {/* Header (same pattern as cart) */}
+        {/* Header */}
         <div className="mb-5 border-b border-neutral-200 pb-4">
           <div className="flex items-end justify-between gap-4">
             <h1 className="font-display text-2xl font-black uppercase italic tracking-tight text-neutral-950 md:text-3xl">
@@ -476,7 +551,7 @@ function CollectionBody() {
           </div>
         )}
 
-        {/* Toolbar: category filter + sort */}
+        {/* Toolbar */}
         {products.length > 0 && (
           <div className="mb-4 flex items-center justify-between gap-3">
             <div
@@ -620,7 +695,6 @@ function CollectionBody() {
   );
 }
 
-// useParams() reads runtime URL data, so it must live under a Suspense boundary
 export default function CollectionPage() {
   return (
     <Suspense fallback={<CollectionSkeleton />}>
