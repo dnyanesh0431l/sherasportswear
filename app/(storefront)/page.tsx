@@ -94,7 +94,6 @@ type HomepageData = {
   sections: Section[];
 };
 
-// A collection tab — "All products" is NOT a tab anymore.
 type Tab = { key: string; label: string; href: string; products: Product[] };
 
 type Filters = {
@@ -313,12 +312,9 @@ function NoScrollbars() {
 }
 
 // ---------------------------------------------------------------------------
-// Brand strip — toggle buttons that filter the products below.
-// Respects the `sortOrder` set in admin/settings (data.brands is pre-sorted).
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Brand strip — mobile = circular scroll avatars, desktop = horizontal scroll
-// cards with left square thumb.
+// Brand strip — mobile = circular avatars, desktop = horizontal scroll
+// cards. Replaced `absolute` positioning with `flex + relative` to fix
+// the mobile WebKit bug where images inside `rounded-full` disappear.
 // ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
@@ -352,9 +348,9 @@ function BrandStrip({
               aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
               className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
             >
-              {/* isolate + transform-gpu fixes mobile Safari/Chrome clipping bugs */}
+              {/* Fixed mobile rendering: flex + relative image instead of absolute */}
               <span
-                className={`relative isolate h-[56px] w-[56px] overflow-hidden rounded-full border-2 bg-white transition-colors ${
+                className={`relative flex h-[56px] w-[56px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 bg-white transition-colors ${
                   active
                     ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
                     : "border-neutral-300"
@@ -369,14 +365,13 @@ function BrandStrip({
                   {b.name.charAt(0)}
                 </span>
 
-                {/* Image — force eager load & gpu acceleration */}
+                {/* Image — relative z-10 fills flex parent perfectly */}
                 {b.image && (
                   <img
                     src={b.image}
                     alt=""
-                    loading="eager"
-                    decoding="async"
-                    className="absolute inset-0 h-full w-full object-cover transform-gpu"
+                    referrerPolicy="no-referrer"
+                    className="relative z-10 h-full w-full rounded-full object-cover"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.display =
                         "none";
@@ -385,7 +380,7 @@ function BrandStrip({
                 )}
 
                 {active && (
-                  <span className="absolute -right-0.5 -top-0.5 z-10 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
+                  <span className="absolute -right-0.5 -top-0.5 z-20 grid h-4 w-4 place-items-center rounded-full bg-[#ff5a1f] text-white shadow">
                     <Check className="h-2.5 w-2.5" strokeWidth={3} />
                   </span>
                 )}
@@ -402,7 +397,7 @@ function BrandStrip({
         })}
       </div>
 
-      {/* ===================== Desktop: scroll cards, left square thumb ===================== */}
+      {/* ===================== Desktop: scroll cards ===================== */}
       <div className="relative hidden md:block">
         <div
           aria-hidden
@@ -427,7 +422,7 @@ function BrandStrip({
                 }`}
               >
                 <span
-                  className={`relative isolate h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-white ${
+                  className={`relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-white ${
                     active ? "border-white/20" : "border-neutral-200"
                   }`}
                 >
@@ -443,8 +438,8 @@ function BrandStrip({
                     <img
                       src={b.image}
                       alt=""
-                      loading="lazy"
-                      className="absolute inset-0 h-full w-full object-cover transform-gpu"
+                      referrerPolicy="no-referrer"
+                      className="relative z-10 h-full w-full rounded-md object-cover"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display =
                           "none";
@@ -481,7 +476,7 @@ function BrandStrip({
         </div>
       </div>
 
-      {/* Active filter bar — shared */}
+      {/* Active filter bar */}
       {activeBrandIds.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px]">
           <span className="text-neutral-600">Filtering by:</span>
@@ -577,8 +572,6 @@ function ProductCard({ product }: { product: Product }) {
             </div>
           )}
 
-          {/* Discount badge — solid red, white bold uppercase, with shadow so
-              it pops off any product image. */}
           {discount > 0 && (
             <span className="absolute left-1.5 top-1.5 rounded-sm bg-red-600 px-2 py-1 text-[11px] font-black leading-none tracking-wide text-white shadow-md">
               {discount}% OFF
@@ -974,10 +967,7 @@ function FilterSheet({
 }
 
 // ---------------------------------------------------------------------------
-// Showcase — controlled by the page. No "All products" tab.
-//   - activeKey === undefined → show all products
-//   - activeKey === collectionId → show that collection
-//   - clicking the active collection tab deselects it → back to all products
+// Showcase
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
@@ -1005,7 +995,6 @@ function Showcase({
   const activeTab = activeKey
     ? tabs.find((t) => t.key === activeKey)
     : undefined;
-  // When no collection tab is active, we're on "All products".
   const tabProducts = activeTab?.products ?? allProducts;
 
   const results = useMemo(() => {
@@ -1019,7 +1008,6 @@ function Showcase({
     return list;
   }, [tabProducts, filters, sort]);
 
-  // Reset pagination whenever the filter or tab changes from the outside
   useEffect(() => {
     setVisible(PAGE_SIZE);
   }, [filters, activeKey]);
@@ -1114,7 +1102,6 @@ function Showcase({
           Shop the drop
         </h2>
 
-        {/* Collection tabs only. No "All products" tab. */}
         {tabs.length > 0 && (
           <div
             role="tablist"
@@ -1460,8 +1447,6 @@ export default function StorefrontHomePage() {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  // Lifted shared state — both BrandStrip and Showcase read/write these.
-  // activeTabKey === undefined means "All products".
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeTabKey, setActiveTabKey] = useState<string | undefined>(
     undefined,
@@ -1548,7 +1533,6 @@ export default function StorefrontHomePage() {
             };
           });
 
-        // Brands are sorted by `sortOrder` (set in admin/settings), then name.
         const brandsFromCollection: Brand[] = (brandsSnap?.docs ?? [])
           .filter((d) => {
             const s = d.data().status;
@@ -1649,9 +1633,6 @@ export default function StorefrontHomePage() {
     };
   }, [attempt]);
 
-  // Toggle a brand from the strip. Resets to the "All products" view so the
-  // filter applies across the whole catalog, and scrolls to the results on
-  // select.
   const handleToggleBrand = (brandId: string) => {
     const wasActive = filters.brands.includes(brandId);
     setActiveTabKey(undefined);
@@ -1679,13 +1660,11 @@ export default function StorefrontHomePage() {
     return s ? s.isActive : true;
   };
 
-  // Prefer "brand_grid" toggle, fall back to legacy "category_grid", default on.
   const brandSection =
     data.sections.find((s) => s.type === "brand_grid") ??
     data.sections.find((s) => s.type === "category_grid");
   const showBrandStrip = brandSection ? brandSection.isActive : true;
 
-  // ---- Hero slides
   const heroFirst = data.banners.filter((b) => b.placement === "home_hero");
   const others = data.banners.filter((b) => b.placement !== "home_hero");
 
@@ -1710,7 +1689,6 @@ export default function StorefrontHomePage() {
     });
   }
 
-  // ---- Lookups
   const categoryNames: Record<string, string> = {};
   const brandNames: Record<string, string> = {};
   const brandCounts: Record<string, number> = {};
@@ -1730,7 +1708,6 @@ export default function StorefrontHomePage() {
     );
   });
 
-  // ---- Collection tabs (no "All products" entry)
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
 
   const tabs: Tab[] = [];
@@ -1756,7 +1733,6 @@ export default function StorefrontHomePage() {
 
       <HeroSlider slides={heroSlides} />
 
-      {/* All active brands, in their admin-configured sortOrder */}
       {showBrandStrip && (
         <BrandStrip
           brands={data.brands}
