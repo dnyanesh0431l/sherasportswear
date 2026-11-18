@@ -870,10 +870,7 @@ export default function ClientProductPage({ slug }: { slug: string }) {
                 </>
               )}
             </div>
-            <p className="mt-1.5 text-xs text-neutral-500">
-              Free shipping on orders above {formatINR(FREE_SHIPPING_PAISE)}.
-              Tax is added at checkout.
-            </p>
+            
 
             <div className="mt-5 space-y-5">
               {/* Colour */}
