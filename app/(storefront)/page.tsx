@@ -94,6 +94,7 @@ type HomepageData = {
   sections: Section[];
 };
 
+// A collection tab — "All products" is NOT a tab anymore.
 type Tab = { key: string; label: string; href: string; products: Product[] };
 
 type Filters = {
@@ -118,7 +119,6 @@ const HIDE_SCROLLBAR =
 const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
 const PAGE_SIZE = 20;
-const ACCENT = "#ff5a1f";
 
 const EMPTY_FILTERS: Filters = {
   categories: [],
@@ -313,7 +313,8 @@ function NoScrollbars() {
 }
 
 // ---------------------------------------------------------------------------
-// Brand strip — toggle buttons that filter the products below
+// Brand strip — toggle buttons that filter the products below.
+// Respects the `sortOrder` set in admin/settings (data.brands is pre-sorted).
 // ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
@@ -555,9 +556,11 @@ function ProductCard({ product }: { product: Product }) {
             </div>
           )}
 
+          {/* Discount badge — solid red, white bold uppercase, with shadow so
+              it pops off any product image. */}
           {discount > 0 && (
-            <span className="absolute bg-neutral-100 left-1.5 top-1.5 rounded-sm bg-brand px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-neutral-950">
-              {discount}% off
+            <span className="absolute left-1.5 top-1.5 rounded-sm bg-red-600 px-2 py-1 text-[11px] font-black leading-none tracking-wide text-white shadow-md">
+              {discount}% OFF
             </span>
           )}
 
@@ -950,10 +953,14 @@ function FilterSheet({
 }
 
 // ---------------------------------------------------------------------------
-// Showcase (controlled: filters + active tab come from the page)
+// Showcase — controlled by the page. No "All products" tab.
+//   - activeKey === undefined → show all products
+//   - activeKey === collectionId → show that collection
+//   - clicking the active collection tab deselects it → back to all products
 // ---------------------------------------------------------------------------
 function Showcase({
   tabs,
+  allProducts,
   categoryNames,
   brandNames,
   filters,
@@ -962,19 +969,23 @@ function Showcase({
   onActiveKeyChange,
 }: {
   tabs: Tab[];
+  allProducts: Product[];
   categoryNames: Record<string, string>;
   brandNames: Record<string, string>;
   filters: Filters;
   onFiltersChange: (f: Filters) => void;
   activeKey: string | undefined;
-  onActiveKeyChange: (key: string) => void;
+  onActiveKeyChange: (key: string | undefined) => void;
 }) {
   const [sort, setSort] = useState<SortKey>("featured");
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const tab = tabs.find((t) => t.key === activeKey) ?? tabs[0];
-  const tabProducts = tab?.products ?? [];
+  const activeTab = activeKey
+    ? tabs.find((t) => t.key === activeKey)
+    : undefined;
+  // When no collection tab is active, we're on "All products".
+  const tabProducts = activeTab?.products ?? allProducts;
 
   const results = useMemo(() => {
     const list = tabProducts.filter((p) => matches(p, filters));
@@ -993,8 +1004,6 @@ function Showcase({
   }, [filters, activeKey]);
 
   const closeSheet = useCallback(() => setSheetOpen(false), []);
-
-  if (!tab) return null;
 
   const update = (f: Filters) => onFiltersChange(f);
   const clearAll = () => onFiltersChange(EMPTY_FILTERS);
@@ -1083,41 +1092,48 @@ function Showcase({
         <h2 className="font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
           Shop the drop
         </h2>
-        <div
-          role="tablist"
-          aria-label="Product lists"
-          className={`${HIDE_SCROLLBAR} -mx-4 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0`}
-        >
-          {tabs.map((t) => {
-            const on = t.key === tab.key;
-            return (
-              <button
-                key={t.key}
-                role="tab"
-                aria-selected={on}
-                onClick={() => onActiveKeyChange(t.key)}
-                className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${FOCUS} ${
-                  on
-                    ? "bg-neutral-950 text-white"
-                    : "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
-                }`}
-              >
-                {t.label}
-                <span
-                  className={`ml-1.5 text-[11px] ${on ? "text-white/70" : "text-neutral-500"}`}
+
+        {/* Collection tabs only. No "All products" tab. */}
+        {tabs.length > 0 && (
+          <div
+            role="tablist"
+            aria-label="Product lists"
+            className={`${HIDE_SCROLLBAR} -mx-4 flex min-w-0 flex-1 gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0`}
+          >
+            {tabs.map((t) => {
+              const on = t.key === activeKey;
+              return (
+                <button
+                  key={t.key}
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => onActiveKeyChange(on ? undefined : t.key)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${FOCUS} ${
+                    on
+                      ? "bg-neutral-950 text-white"
+                      : "bg-neutral-100 text-neutral-800 hover:bg-neutral-200"
+                  }`}
                 >
-                  {t.products.length}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <Link
-          href={tab.href}
-          className={`hidden shrink-0 items-center gap-1 text-[13px] font-bold text-neutral-950 hover:underline lg:inline-flex ${FOCUS}`}
-        >
-          View all <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+                  {t.label}
+                  <span
+                    className={`ml-1.5 text-[11px] ${on ? "text-white/70" : "text-neutral-500"}`}
+                  >
+                    {t.products.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {activeTab && (
+          <Link
+            href={activeTab.href}
+            className={`hidden shrink-0 items-center gap-1 text-[13px] font-bold text-neutral-950 hover:underline lg:inline-flex ${FOCUS}`}
+          >
+            View all <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </div>
 
       <div className="lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-6">
@@ -1222,7 +1238,10 @@ function Showcase({
               className="grid grid-cols-2 gap-x-2.5 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-3 lg:gap-y-5 xl:grid-cols-5"
             >
               {shown.map((p) => (
-                <ProductCard key={`${tab.key}-${p.id}`} product={p} />
+                <ProductCard
+                  key={`${activeKey ?? "all"}-${p.id}`}
+                  product={p}
+                />
               ))}
             </div>
           ) : (
@@ -1242,7 +1261,7 @@ function Showcase({
             </div>
           )}
 
-          {shown.length > 0 && (
+          {shown.length > 0 && (remaining > 0 || activeTab) && (
             <div className="mt-5 flex justify-center">
               {remaining > 0 ? (
                 <button
@@ -1253,12 +1272,10 @@ function Showcase({
                 </button>
               ) : (
                 <Link
-                  href={tab.href}
+                  href={activeTab!.href}
                   className={`inline-flex items-center gap-1.5 text-[13px] font-bold text-neutral-950 hover:underline ${FOCUS}`}
                 >
-                  {tab.key === "__all__"
-                    ? "Browse all products"
-                    : `See the full ${tab.label.toLowerCase()} range`}{" "}
+                  See the full {activeTab!.label.toLowerCase()} range{" "}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               )}
@@ -1423,6 +1440,7 @@ export default function StorefrontHomePage() {
   const [attempt, setAttempt] = useState(0);
 
   // Lifted shared state — both BrandStrip and Showcase read/write these.
+  // activeTabKey === undefined means "All products".
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [activeTabKey, setActiveTabKey] = useState<string | undefined>(
     undefined,
@@ -1509,6 +1527,7 @@ export default function StorefrontHomePage() {
             };
           });
 
+        // Brands are sorted by `sortOrder` (set in admin/settings), then name.
         const brandsFromCollection: Brand[] = (brandsSnap?.docs ?? [])
           .filter((d) => {
             const s = d.data().status;
@@ -1609,11 +1628,12 @@ export default function StorefrontHomePage() {
     };
   }, [attempt]);
 
-  // Toggle a brand from the strip. Also forces the "All products" tab so the
-  // filter applies globally, and scrolls to the results on select.
+  // Toggle a brand from the strip. Resets to the "All products" view so the
+  // filter applies across the whole catalog, and scrolls to the results on
+  // select.
   const handleToggleBrand = (brandId: string) => {
     const wasActive = filters.brands.includes(brandId);
-    setActiveTabKey("__all__");
+    setActiveTabKey(undefined);
     setFilters((prev) => ({
       ...prev,
       brands: wasActive
@@ -1689,18 +1709,10 @@ export default function StorefrontHomePage() {
     );
   });
 
-  // ---- Showcase tabs
+  // ---- Collection tabs (no "All products" entry)
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
 
-  const tabs: Tab[] = [
-    {
-      key: "__all__",
-      label: "All products",
-      href: "/products",
-      products: data.products,
-    },
-  ];
-
+  const tabs: Tab[] = [];
   data.collections.forEach((col) => {
     const list = data.products.filter((p) => p.collectionIds.includes(col.id));
     if (list.length) {
@@ -1723,9 +1735,10 @@ export default function StorefrontHomePage() {
 
       <HeroSlider slides={heroSlides} />
 
+      {/* All active brands, in their admin-configured sortOrder */}
       {showBrandStrip && (
         <BrandStrip
-          brands={data.brands.slice(0, 6)}
+          brands={data.brands}
           counts={brandCounts}
           activeBrandIds={filters.brands}
           onToggleBrand={handleToggleBrand}
@@ -1735,6 +1748,7 @@ export default function StorefrontHomePage() {
       {data.products.length > 0 ? (
         <Showcase
           tabs={tabs}
+          allProducts={data.products}
           categoryNames={categoryNames}
           brandNames={brandNames}
           filters={filters}
