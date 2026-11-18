@@ -138,6 +138,8 @@ export default function EditProductPage() {
   // Variant fields
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
+  const [customColors, setCustomColors] = useState<string[]>([]);
+  const [newColorInput, setNewColorInput] = useState("");
   const [variants, setVariants] = useState<Variant[]>([]);
   const [existingVariantIds, setExistingVariantIds] = useState<Set<string>>(
     new Set(),
@@ -157,6 +159,9 @@ export default function EditProductPage() {
     null | "brand" | "category" | "collection"
   >(null);
   const [quickAddValue, setQuickAddValue] = useState("");
+
+  // Merged palette — built-in + anything custom added this session / loaded
+  const allColorOptions = [...COLOR_OPTIONS, ...customColors];
 
   // Reset transient flags on every mount
   useEffect(() => {
@@ -252,12 +257,17 @@ export default function EditProductPage() {
             Array.isArray(p.sizes) && p.sizes.length > 0
               ? p.sizes
               : Array.from(new Set(loadedVariants.map((v) => v.size)));
-          const loadedColors =
+          const loadedColors: string[] =
             Array.isArray(p.colors) && p.colors.length > 0
               ? p.colors
               : Array.from(new Set(loadedVariants.map((v) => v.color)));
           setSizes(loadedSizes);
           setColors(loadedColors);
+          // Any saved color that isn't in the built-in palette becomes a
+          // custom chip so it stays selectable across edits.
+          setCustomColors(
+            loadedColors.filter((c) => !COLOR_OPTIONS.includes(c)),
+          );
           setVariants(loadedVariants);
           setExistingVariantIds(
             new Set(
@@ -322,6 +332,29 @@ export default function EditProductPage() {
     setColors((prev) =>
       prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
     );
+
+  const handleAddCustomColor = () => {
+    const v = newColorInput.trim();
+    if (!v) return;
+    if (v.length > 30) {
+      toast.error("Color name is too long (max 30 characters)");
+      return;
+    }
+    const all = [...COLOR_OPTIONS, ...customColors];
+    const match = all.find((c) => c.toLowerCase() === v.toLowerCase());
+    if (match) {
+      // Already in the palette — just make sure it's selected
+      if (!colors.includes(match)) {
+        setColors((prev) => [...prev, match]);
+      }
+      setNewColorInput("");
+      return;
+    }
+    setCustomColors((prev) => [...prev, v]);
+    setColors((prev) => [...prev, v]);
+    setNewColorInput("");
+    toast.success(`Color "${v}" added`);
+  };
 
   const updateVariant = (
     index: number,
@@ -1006,7 +1039,7 @@ export default function EditProductPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {COLOR_OPTIONS.map((c) => {
+                  {allColorOptions.map((c) => {
                     const active = colors.includes(c);
                     return (
                       <button
@@ -1023,6 +1056,32 @@ export default function EditProductPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Add a custom color */}
+                <div className="flex gap-1 mt-1.5">
+                  <input
+                    value={newColorInput}
+                    onChange={(e) => setNewColorInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCustomColor();
+                      }
+                    }}
+                    placeholder="Add a custom color…"
+                    maxLength={30}
+                    className={`${inputCls} flex-1`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomColor}
+                    disabled={!newColorInput.trim()}
+                    title="Add custom color"
+                    className="shrink-0 inline-flex items-center justify-center gap-1 border border-blue-500 bg-blue-500 text-white px-2.5 text-xs font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
                 </div>
               </div>
 

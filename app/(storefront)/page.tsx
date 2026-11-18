@@ -64,6 +64,15 @@ type Category = {
   description: string | null;
 };
 
+type Brand = {
+  id: string;
+  name: string;
+  slug: string;
+  image: string | null;
+  description: string | null;
+  sortOrder: number;
+};
+
 type Collection = {
   id: string;
   name: string;
@@ -79,6 +88,7 @@ type HomepageData = {
   banners: Banner[];
   products: Product[];
   categories: Category[];
+  brands: Brand[];
   collections: Collection[];
   sections: Section[];
 };
@@ -214,22 +224,26 @@ function colorHex(name: string): string {
   return "#d4d4d4";
 }
 
+// Brand avatar fallback (when brand has no image). Deterministic color per name.
+const BRAND_COLORS = [
+  "#111111",
+  "#ff5a1f",
+  "#2563eb",
+  "#0f766e",
+  "#7c3aed",
+  "#dc2626",
+  "#0369a1",
+  "#b45309",
+];
+function brandColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return BRAND_COLORS[Math.abs(h) % BRAND_COLORS.length];
+}
+
 // ---------------------------------------------------------------------------
 // Gender matching
 // ---------------------------------------------------------------------------
-/**
- * A product's gender "fits" a set of selected gender filters when:
- *   - no filter is selected (matches everything), OR
- *   - the product's own gender is directly selected, OR
- *   - the product is Unisex and the filter includes Men or Women
- *     (unisex styles are for everyone).
- *
- * So:
- *   filter=["men"]            → men + unisex
- *   filter=["women"]          → women + unisex
- *   filter=["unisex"]         → unisex only
- *   filter=["men","women"]    → men + women + unisex
- */
 function genderMatchesFilter(
   productGender: string,
   selected: string[],
@@ -297,34 +311,35 @@ function NoScrollbars() {
 }
 
 // ---------------------------------------------------------------------------
-// Category strip
+// Brand strip (replaces the old category strip)
 // ---------------------------------------------------------------------------
-function CategoryStrip({
-  categories,
+function BrandStrip({
+  brands,
   counts,
 }: {
-  categories: Category[];
+  brands: Brand[];
   counts: Record<string, number>;
 }) {
-  if (!categories.length) return null;
+  if (!brands.length) return null;
 
   return (
-    <section className={`${WRAP} pt-3`} aria-label="Shop by category">
+    <section className={`${WRAP} pt-3`} aria-label="Shop by brand">
+      {/* Desktop */}
       <div
         className="hidden gap-2.5 md:grid"
         style={{
-          gridTemplateColumns: `repeat(${Math.min(categories.length, 6)}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${Math.min(brands.length, 6)}, minmax(0, 1fr))`,
         }}
       >
-        {categories.map((c) => (
+        {brands.map((b) => (
           <Link
-            key={c.id}
-            href={`/categories/${c.slug}`}
+            key={b.id}
+            href={`/products?brand=${b.slug}`}
             className={`group relative flex h-[60px] overflow-hidden rounded-md bg-neutral-100 ${FOCUS}`}
           >
-            {c.image && (
+            {b.image ? (
               <img
-                src={c.image}
+                src={b.image}
                 alt=""
                 loading="lazy"
                 className="absolute right-0 top-0 h-full w-[50%] object-cover transition-transform duration-500 group-hover:scale-110"
@@ -335,41 +350,55 @@ function CategoryStrip({
                     "linear-gradient(to right, transparent, black 45%)",
                 }}
               />
+            ) : (
+              <span
+                aria-hidden
+                className="absolute right-0 top-0 grid h-full w-[50%] select-none place-items-center text-4xl font-black uppercase text-white/30"
+                style={{ background: brandColor(b.name) }}
+              >
+                {b.name.charAt(0)}
+              </span>
             )}
             <div className="relative z-10 flex flex-col justify-center pl-3.5">
               <h3 className="font-display text-[13px] font-black uppercase leading-tight text-neutral-950">
-                {c.name}
+                {b.name}
               </h3>
               <span className="text-[11px] font-medium text-neutral-600">
-                {counts[c.id] ?? 0} styles
+                {counts[b.id] ?? 0} styles
               </span>
             </div>
           </Link>
         ))}
       </div>
 
+      {/* Mobile */}
       <div
         className={`${HIDE_SCROLLBAR} -mx-4 flex gap-3.5 overflow-x-auto px-4 md:hidden`}
       >
-        {categories.map((c) => (
+        {brands.map((b) => (
           <Link
-            key={c.id}
-            href={`/categories/${c.slug}`}
+            key={b.id}
+            href={`/products?brand=${b.slug}`}
             className="flex w-[58px] shrink-0 flex-col items-center gap-1"
           >
             <span className="grid h-[52px] w-[52px] place-items-center overflow-hidden rounded-full border border-neutral-300 bg-neutral-100">
-              {c.image ? (
+              {b.image ? (
                 <img
-                  src={c.image}
+                  src={b.image}
                   alt=""
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Tag className="h-5 w-5 text-neutral-500" />
+                <span
+                  className="grid h-full w-full place-items-center text-base font-black uppercase text-white"
+                  style={{ background: brandColor(b.name) }}
+                >
+                  {b.name.charAt(0)}
+                </span>
               )}
             </span>
             <span className="text-center text-[11px] font-semibold text-neutral-900">
-              {c.name}
+              {b.name}
             </span>
           </Link>
         ))}
@@ -641,8 +670,6 @@ function FilterPanel({
               label={GENDER_LABEL[g]}
               checked={filters.gender.includes(g)}
               onChange={() => toggle("gender", g)}
-              // Count reflects exactly what checking this box yields —
-              // e.g. "Men" includes unisex styles.
               count={count("gender", (p) => genderMatchesFilter(p.gender, [g]))}
             />
           ))}
@@ -844,8 +871,6 @@ function Showcase({
   categoryNames: Record<string, string>;
   brandNames: Record<string, string>;
 }) {
-  // The first tab is always "__all__" (All products), so nothing is
-  // pre-selected on load.
   const [activeKey, setActiveKey] = useState<string | undefined>(tabs[0]?.key);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [sort, setSort] = useState<SortKey>("featured");
@@ -952,7 +977,6 @@ function Showcase({
 
   return (
     <section className={`${WRAP} pt-5`} aria-label="Shop products">
-      {/* Heading + tabs */}
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-5">
         <h2 className="font-display text-xl font-black uppercase leading-none tracking-tight text-neutral-950 sm:text-2xl">
           Shop the drop
@@ -998,7 +1022,6 @@ function Showcase({
       </div>
 
       <div className="lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-6">
-        {/* Desktop sidebar */}
         <aside
           className="hidden self-start lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
           aria-label="Filters"
@@ -1026,7 +1049,6 @@ function Showcase({
         </aside>
 
         <div className="min-w-0">
-          {/* Toolbar */}
           <div className="mb-2.5 flex items-center gap-2">
             <button
               onClick={() => setSheetOpen(true)}
@@ -1071,7 +1093,6 @@ function Showcase({
             </div>
           </div>
 
-          {/* Active filter chips */}
           {chips.length > 0 && (
             <div
               className={`${HIDE_SCROLLBAR} -mx-4 mb-3 flex items-center gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0`}
@@ -1096,7 +1117,6 @@ function Showcase({
             </div>
           )}
 
-          {/* Grid */}
           {shown.length > 0 ? (
             <div
               role="tabpanel"
@@ -1316,12 +1336,14 @@ export default function StorefrontHomePage() {
         const [
           bannersSnap,
           productsSnap,
+          brandsSnap,
           categoriesSnap,
           collectionsSnap,
           sectionsSnap,
         ] = await Promise.all([
           byOrder("banners"),
           getDocs(query(collection(db, "products"), limit(60))),
+          getDocs(collection(db, "brands")).catch(() => null),
           byOrder("categories"),
           byOrder("collections"),
           byOrder("homepageSections").catch(() => null),
@@ -1382,6 +1404,48 @@ export default function StorefrontHomePage() {
             };
           });
 
+        // Brands — from the `brands` collection. Falls back to brands
+        // derived from products if the collection doesn't exist yet.
+        const brandsFromCollection: Brand[] = (brandsSnap?.docs ?? [])
+          .filter((d) => {
+            const s = d.data().status;
+            return s === undefined || s === null || s === "active";
+          })
+          .map((d) => {
+            const b = d.data();
+            return {
+              id: d.id,
+              name: b.name || d.id,
+              slug: b.slug || d.id,
+              image: b.image || null,
+              description: b.description || null,
+              sortOrder: typeof b.sortOrder === "number" ? b.sortOrder : 999,
+            };
+          })
+          .sort(
+            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+          );
+
+        let brands: Brand[] = brandsFromCollection;
+        if (brands.length === 0) {
+          const seen = new Set<string>();
+          brands = [];
+          products.forEach((p) => {
+            if (p.brandId && p.brandName && !seen.has(p.brandId)) {
+              seen.add(p.brandId);
+              brands.push({
+                id: p.brandId,
+                name: p.brandName,
+                slug: p.brandId,
+                image: null,
+                description: null,
+                sortOrder: 999,
+              });
+            }
+          });
+          brands.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
         const categories: Category[] = categoriesSnap.docs
           .filter((d) => d.data().status === "active")
           .map((d) => {
@@ -1420,7 +1484,14 @@ export default function StorefrontHomePage() {
         });
 
         if (!cancelled)
-          setData({ banners, products, categories, collections, sections });
+          setData({
+            banners,
+            products,
+            categories,
+            brands,
+            collections,
+            sections,
+          });
       } catch (error) {
         console.error("Failed to load storefront data:", error);
         if (!cancelled) setFailed(true);
@@ -1443,6 +1514,13 @@ export default function StorefrontHomePage() {
     const s = data.sections.find((x) => x.type === type);
     return s ? s.isActive : true;
   };
+
+  // Toggle: prefer "brand_grid", fall back to legacy "category_grid",
+  // default to shown if neither is configured.
+  const brandSection =
+    data.sections.find((s) => s.type === "brand_grid") ??
+    data.sections.find((s) => s.type === "category_grid");
+  const showBrandStrip = brandSection ? brandSection.isActive : true;
 
   // ---- Hero slides
   const heroFirst = data.banners.filter((b) => b.placement === "home_hero");
@@ -1471,21 +1549,26 @@ export default function StorefrontHomePage() {
 
   // ---- Lookups
   const categoryNames: Record<string, string> = {};
-  const categoryCounts: Record<string, number> = {};
-  const collectionCounts: Record<string, number> = {};
   const brandNames: Record<string, string> = {};
+  const brandCounts: Record<string, number> = {};
+  const collectionCounts: Record<string, number> = {};
 
   data.categories.forEach((c) => (categoryNames[c.id] = c.name));
+  data.brands.forEach((b) => (brandNames[b.id] = b.name));
   data.products.forEach((p) => {
-    categoryCounts[p.categoryId] = (categoryCounts[p.categoryId] ?? 0) + 1;
+    if (p.brandId) {
+      brandCounts[p.brandId] = (brandCounts[p.brandId] ?? 0) + 1;
+      // Ensure brandName fallback exists even if brands collection is empty
+      if (!brandNames[p.brandId] && p.brandName) {
+        brandNames[p.brandId] = p.brandName;
+      }
+    }
     p.collectionIds.forEach(
       (id) => (collectionCounts[id] = (collectionCounts[id] ?? 0) + 1),
     );
-    if (p.brandId && p.brandName) brandNames[p.brandId] = p.brandName;
   });
 
   // ---- Showcase tabs
-  // "All products" is always the first tab and default selection.
   const disc = (p: Product) => discountPercent(p.mrpPaise, p.basePricePaise);
 
   const tabs: Tab[] = [
@@ -1519,11 +1602,8 @@ export default function StorefrontHomePage() {
 
       <HeroSlider slides={heroSlides} />
 
-      {sectionOn("category_grid") && (
-        <CategoryStrip
-          categories={data.categories.slice(0, 6)}
-          counts={categoryCounts}
-        />
+      {showBrandStrip && (
+        <BrandStrip brands={data.brands.slice(0, 6)} counts={brandCounts} />
       )}
 
       {data.products.length > 0 ? (
