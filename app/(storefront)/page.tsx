@@ -318,9 +318,7 @@ function NoScrollbars() {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Brand strip — mobile = circular scroll avatars, desktop = horizontal scroll
-// cards with left square thumb. Brand images are square; the circle shows the
-// center square crop (object-cover). Fallback letter is always rendered behind
-// the img, so broken URLs gracefully degrade to the letter avatar.
+// cards with left square thumb.
 // ---------------------------------------------------------------------------
 function BrandStrip({
   brands,
@@ -354,14 +352,15 @@ function BrandStrip({
               aria-label={`${active ? "Remove filter" : "Filter by"} ${b.name}`}
               className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded ${FOCUS}`}
             >
+              {/* isolate + transform-gpu fixes mobile Safari/Chrome clipping bugs */}
               <span
-                className={`relative h-[56px] w-[56px] overflow-hidden rounded-full border-2 bg-white transition-colors ${
+                className={`relative isolate h-[56px] w-[56px] overflow-hidden rounded-full border-2 bg-white transition-colors ${
                   active
                     ? "border-[#ff5a1f] ring-2 ring-[#ff5a1f] ring-offset-1"
                     : "border-neutral-300"
                 }`}
               >
-                {/* Letter fallback — always rendered behind the img */}
+                {/* Fallback letter */}
                 <span
                   aria-hidden
                   className="absolute inset-0 grid place-items-center text-base font-black uppercase text-white"
@@ -370,13 +369,14 @@ function BrandStrip({
                   {b.name.charAt(0)}
                 </span>
 
-                {/* Image — absolute fills container reliably on every mobile browser.
-                    On error hides itself so the letter fallback shows through. */}
+                {/* Image — force eager load & gpu acceleration */}
                 {b.image && (
                   <img
                     src={b.image}
                     alt=""
-                    className="absolute inset-0 h-full w-full object-cover"
+                    loading="eager"
+                    decoding="async"
+                    className="absolute inset-0 h-full w-full object-cover transform-gpu"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).style.display =
                         "none";
@@ -427,7 +427,7 @@ function BrandStrip({
                 }`}
               >
                 <span
-                  className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-white ${
+                  className={`relative isolate h-14 w-14 shrink-0 overflow-hidden rounded-md border bg-white ${
                     active ? "border-white/20" : "border-neutral-200"
                   }`}
                 >
@@ -444,7 +444,7 @@ function BrandStrip({
                       src={b.image}
                       alt=""
                       loading="lazy"
-                      className="absolute inset-0 h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full object-cover transform-gpu"
                       onError={(e) => {
                         (e.currentTarget as HTMLImageElement).style.display =
                           "none";
