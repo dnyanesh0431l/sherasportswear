@@ -1051,7 +1051,6 @@ export default function ClientProductPage({ slug }: { slug: string }) {
               <ul className="grid grid-cols-3 gap-2">
                 {[
                   { icon: Truck, label: "Fast delivery" },
-                  { icon: RotateCcw, label: "7-day returns" },
                   { icon: ShieldCheck, label: "Secure checkout" },
                 ].map(({ icon: Icon, label }) => (
                   <li

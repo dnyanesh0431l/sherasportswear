@@ -63,7 +63,6 @@ type RangeStats = {
     totalSpentPaise: number;
   }[];
   dailyBreakdown: { day: string; totalPaise: number; orderCount: number }[];
-  lowStockProducts: { id: string; name: string; stock: number }[];
   counts: {
     products: number;
     orders: number;
@@ -92,7 +91,6 @@ type RecentProduct = {
   basePricePaise: number;
   status: string;
   image: string | null;
-  inventoryValue: number;
 };
 
 type BannerDoc = {
@@ -139,10 +137,6 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
-/**
- * Returns the [start, end) boundaries for the selected range.
- * End is always "today 00:00" so today's data is excluded.
- */
 function getRange(
   range: RangeKey,
   customStart?: string,
@@ -182,7 +176,6 @@ function getRange(
       endStr: toKey(addDays(today, -1)),
     };
   }
-  // custom
   const s = startOfDay(new Date(customStart || toKey(addDays(today, -7))));
   const eExclusive = addDays(
     startOfDay(new Date(customEnd || toKey(addDays(today, -1)))),
@@ -345,7 +338,6 @@ async function computeRangeStats(
   const dailyMap: Record<string, { totalPaise: number; orderCount: number }> =
     {};
 
-  // Pre-fill daily buckets
   const cursor = new Date(start);
   while (cursor < end) {
     dailyMap[toKey(cursor)] = { totalPaise: 0, orderCount: 0 };
@@ -399,14 +391,6 @@ async function computeRangeStats(
     }
   });
 
-  const lowStockProducts: { id: string; name: string; stock: number }[] = [];
-  productsSnap.forEach((d) => {
-    const p = d.data();
-    const stock = typeof p.inventoryValue === "number" ? p.inventoryValue : 0;
-    if (stock < 20)
-      lowStockProducts.push({ id: d.id, name: p.name || d.id, stock });
-  });
-
   const stats: RangeStats = {
     cacheKey,
     startDate: startStr,
@@ -428,7 +412,6 @@ async function computeRangeStats(
       .sort((a, b) => b.totalSpentPaise - a.totalSpentPaise)
       .slice(0, 5),
     dailyBreakdown: Object.entries(dailyMap).map(([day, v]) => ({ day, ...v })),
-    lowStockProducts: lowStockProducts.slice(0, 10),
     counts: {
       products: productsSnap.size,
       orders: ordersSnap.size,
@@ -490,7 +473,6 @@ export default function AdminDashboardPage() {
       );
       const cacheKey = rangeCacheKey(startStr, endStr);
 
-      // 1. Try cache
       const statsRef = doc(db, "dashboardStats", cacheKey);
       const statsSnap = await getDoc(statsRef);
 
@@ -504,7 +486,6 @@ export default function AdminDashboardPage() {
         } as RangeStats;
         setWasCached(true);
       } else {
-        // 2. Cache miss → compute + save
         setComputing(true);
         finalStats = await computeRangeStats(
           start,
@@ -519,7 +500,6 @@ export default function AdminDashboardPage() {
 
       setStats(finalStats);
 
-      // 3. Load small live lists
       const [ordersSnap, productsSnap, bannersSnap] = await Promise.all([
         getDocs(
           query(
@@ -571,8 +551,6 @@ export default function AdminDashboardPage() {
               typeof data.basePricePaise === "number" ? data.basePricePaise : 0,
             status: data.status || "unknown",
             image: Array.isArray(data.images) ? data.images[0] : null,
-            inventoryValue:
-              typeof data.inventoryValue === "number" ? data.inventoryValue : 0,
           };
         }),
       );
@@ -603,12 +581,10 @@ export default function AdminDashboardPage() {
   }, [rangeKey, customStart, customEnd]);
 
   useEffect(() => {
-    // Skip until custom dates are both set
     if (rangeKey === "custom" && (!customStart || !customEnd)) return;
     load();
   }, [load, rangeKey, customStart, customEnd]);
 
-  // Default custom dates (last 7 days ending yesterday)
   useEffect(() => {
     if (!customStart || !customEnd) {
       const today = startOfDay(new Date());
@@ -637,7 +613,6 @@ export default function AdminDashboardPage() {
   const hasAlerts =
     !!stats &&
     ((stats.statusCounts.pending || 0) > 0 ||
-      stats.lowStockProducts.length > 0 ||
       (stats.paymentCounts.failed || 0) > 0);
 
   return (
@@ -766,16 +741,6 @@ export default function AdminDashboardPage() {
                     >
                       → {stats.statusCounts.pending} pending order
                       {stats.statusCounts.pending > 1 ? "s" : ""} in this period
-                    </Link>
-                  )}
-                  {stats.lowStockProducts.length > 0 && (
-                    <Link
-                      href="/admin/products"
-                      className="hover:underline font-medium"
-                    >
-                      → {stats.lowStockProducts.length} product
-                      {stats.lowStockProducts.length > 1 ? "s" : ""} low on
-                      stock
                     </Link>
                   )}
                   {(stats.paymentCounts.failed || 0) > 0 && (
@@ -1062,88 +1027,41 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Low Stock + Quick Actions */}
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="bg-white border border-neutral-200 flex flex-col">
-              <PanelHeader
-                title="Low Stock Products"
-                href="/admin/products"
-                action="Restock"
-                count={stats.lowStockProducts.length}
-              />
-              <div className="flex-1">
-                {stats.lowStockProducts.length === 0 ? (
-                  <EmptyBlock
-                    title="All products well-stocked"
-                    hint="Products below 20 units appear here."
-                  />
-                ) : (
-                  <ul className="divide-y divide-neutral-100">
-                    {stats.lowStockProducts.map((p) => (
-                      <li
-                        key={p.id}
-                        className="px-3 py-2 flex items-center gap-3 hover:bg-neutral-50 transition-colors"
-                      >
-                        <div
-                          className={`grid h-7 w-7 place-items-center border shrink-0 ${p.stock === 0 ? "bg-red-50 text-red-600 border-red-200" : "bg-amber-50 text-amber-600 border-amber-200"}`}
-                        >
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-semibold text-neutral-900 truncate">
-                            {p.name}
-                          </div>
-                          <div className="text-[10px] text-neutral-500 font-mono">
-                            {p.id}
-                          </div>
-                        </div>
-                        <div
-                          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 border ${p.stock === 0 ? "text-red-700 bg-red-50 border-red-200" : "text-amber-700 bg-amber-50 border-amber-200"}`}
-                        >
-                          {p.stock === 0 ? "Out" : `${p.stock} left`}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white border border-neutral-200">
-              <PanelHeader title="Quick Actions" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 divide-x divide-neutral-100">
-                {[
-                  {
-                    href: "/admin/products/new",
-                    icon: Plus,
-                    label: "Add Product",
-                  },
-                  {
-                    href: "/admin/orders",
-                    icon: ShoppingBag,
-                    label: "View Orders",
-                  },
-                  { href: "/admin/shipments", icon: Truck, label: "Shipments" },
-                  {
-                    href: "/admin/payments",
-                    icon: CreditCard,
-                    label: "Payments",
-                  },
-                  { href: "/admin/banners", icon: ImageIcon, label: "Banners" },
-                  { href: "/", icon: ArrowRight, label: "View Store" },
-                ].map(({ href, icon: Icon, label }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="flex flex-col items-center justify-center gap-1.5 p-4 hover:bg-neutral-50 transition-colors group"
-                  >
-                    <Icon className="h-5 w-5 text-neutral-400 group-hover:text-[#ff5a1f]" />
-                    <span className="text-[11px] font-medium text-neutral-700">
-                      {label}
-                    </span>
-                  </Link>
-                ))}
-              </div>
+          {/* Quick Actions */}
+          <div className="bg-white border border-neutral-200">
+            <PanelHeader title="Quick Actions" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-neutral-100">
+              {[
+                {
+                  href: "/admin/products/new",
+                  icon: Plus,
+                  label: "Add Product",
+                },
+                {
+                  href: "/admin/orders",
+                  icon: ShoppingBag,
+                  label: "View Orders",
+                },
+                { href: "/admin/shipments", icon: Truck, label: "Shipments" },
+                {
+                  href: "/admin/payments",
+                  icon: CreditCard,
+                  label: "Payments",
+                },
+                { href: "/admin/banners", icon: ImageIcon, label: "Banners" },
+                { href: "/", icon: ArrowRight, label: "View Store" },
+              ].map(({ href, icon: Icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex flex-col items-center justify-center gap-1.5 p-4 hover:bg-neutral-50 transition-colors group"
+                >
+                  <Icon className="h-5 w-5 text-neutral-400 group-hover:text-[#ff5a1f]" />
+                  <span className="text-[11px] font-medium text-neutral-700">
+                    {label}
+                  </span>
+                </Link>
+              ))}
             </div>
           </div>
 
@@ -1224,19 +1142,6 @@ export default function AdminDashboardPage() {
                         </div>
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3">
-                        {p.inventoryValue === 0 ? (
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5">
-                            Out
-                          </span>
-                        ) : p.inventoryValue < 20 ? (
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5">
-                            {p.inventoryValue} left
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5">
-                            {p.inventoryValue}
-                          </span>
-                        )}
                         <div className="text-xs font-bold text-neutral-900">
                           {formatINR(p.basePricePaise)}
                         </div>
