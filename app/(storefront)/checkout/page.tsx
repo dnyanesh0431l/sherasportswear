@@ -132,6 +132,41 @@ function openRazorpay(
 }
 
 // ---------------------------------------------------------------------------
+// API helper — never hides the real server error
+// ---------------------------------------------------------------------------
+type ApiResult<T> = {
+  ok: boolean;
+  status: number;
+  data: T | null;
+  text: string;
+};
+
+/**
+ * Calls an API route and returns the parsed JSON (if any) plus the raw text.
+ * A non-JSON response (e.g. a platform 500 page) no longer collapses into a
+ * generic message: the status code and a snippet are surfaced to the caller.
+ */
+async function postJson<T = any>(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<ApiResult<T>> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: T | null = null;
+  try {
+    data = JSON.parse(text) as T;
+  } catch {
+    data = null;
+  }
+  return { ok: res.ok, status: res.status, data, text };
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type CartItem = {
@@ -156,6 +191,22 @@ type AddressFields = {
 };
 
 type SavedAddress = AddressFields & { id: string; isDefault: boolean };
+
+type CreateOrderResponse = {
+  razorpayOrderId?: string;
+  amount?: number;
+  currency?: string;
+  error?: string;
+  stage?: string;
+};
+
+type VerifyResponse = {
+  verified?: boolean;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  error?: string;
+  stage?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -267,15 +318,6 @@ function normalizeMobile(v: string) {
 }
 
 const isPin = (v: string) => /^[1-9]\d{5}$/.test(v.trim());
-
-function generateOrderNumber(): string {
-  const now = new Date();
-  const yy = now.getFullYear().toString().slice(2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const rand = Math.random().toString(36).toUpperCase().slice(2, 8);
-  return `SHE-${yy}${mm}${dd}${rand}`;
-}
 
 // ---------------------------------------------------------------------------
 // Styles — flat fills only: no borders, no rings, no shadows (same as cart)
@@ -841,17 +883,17 @@ function CheckoutBody() {
     submittingRef.current = true;
     setSubmitting(true);
 
+    // Set once Razorpay reports a successful payment, so a failure after this
+    // point is never shown as a plain "couldn't place order" error.
+    let paymentCompleted = false;
+
     try {
       const idToken = await user.getIdToken();
 
-      // Server price nikale + Razorpay order banaye (orders collection touch nahi)
-      const createRes = await fetch("/api/razorpay/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
+      // 1. Server re-prices the cart and creates the Razorpay order
+      const create = await postJson<CreateOrderResponse>(
+        "/api/razorpay/create-order",
+        {
           items: items.map((it) => ({
             productId: it.id,
             size: it.size,
@@ -861,13 +903,21 @@ function CheckoutBody() {
           email: email.trim(),
           phone: phone.trim(),
           shippingAddress: effectiveAddress,
-        }),
-      });
+        },
+        { Authorization: `Bearer ${idToken}` },
+      );
 
-      const createData = await createRes.json().catch(() => null);
-      if (!createRes.ok || !createData?.razorpayOrderId) {
+      if (!create.ok || !create.data?.razorpayOrderId) {
+        // Surface the real reason instead of a generic message
+        console.error(
+          "create-order failed:",
+          create.status,
+          create.data?.stage ?? "(no stage)",
+          create.text.slice(0, 500),
+        );
         throw new Error(
-          createData?.error || "Couldn't start the payment. Try again.",
+          create.data?.error ||
+            `Couldn't start the payment (error ${create.status}). Please try again.`,
         );
       }
 
@@ -875,11 +925,14 @@ function CheckoutBody() {
         razorpayOrderId,
         amount: razorpayAmount,
         currency: razorpayCurrency,
-      } = createData as {
-        razorpayOrderId: string;
-        amount: number;
-        currency: string;
-      };
+      } = create.data;
+
+      if (
+        typeof razorpayAmount !== "number" ||
+        typeof razorpayCurrency !== "string"
+      ) {
+        throw new Error("Invalid payment response from the server.");
+      }
 
       const loaded = await loadRazorpayScript();
       if (!loaded)
@@ -890,7 +943,7 @@ function CheckoutBody() {
       const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
       if (!keyId) throw new Error("Payment is not configured.");
 
-      // ---------- Razorpay modal ----------
+      // 2. Razorpay modal
       const rzpResponse = await openRazorpay({
         key: keyId,
         amount: razorpayAmount,
@@ -906,34 +959,44 @@ function CheckoutBody() {
         notes: {},
         theme: { color: "#ff5a1f" },
       });
+      paymentCompleted = true;
 
-      // ---------- Verify -> ab order banega ----------
-      const verifyRes = await fetch("/api/razorpay/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // 3. Verify on the server, which creates the order
+      const verify = await postJson<VerifyResponse>(
+        "/api/razorpay/verify",
+        {
           razorpay_order_id: rzpResponse.razorpay_order_id,
           razorpay_payment_id: rzpResponse.razorpay_payment_id,
           razorpay_signature: rzpResponse.razorpay_signature,
-        }),
-      });
-      const verifyData = await verifyRes.json().catch(() => null);
+        },
+        { Authorization: `Bearer ${idToken}` },
+      );
 
-      if (!verifyRes.ok || !verifyData?.verified || !verifyData?.orderId) {
+      if (!verify.ok || !verify.data?.verified || !verify.data?.orderId) {
+        console.error(
+          "verify failed:",
+          verify.status,
+          verify.data?.stage ?? "(no stage)",
+          verify.text.slice(0, 500),
+        );
         throw new Error(
-          "Payment verify nahi ho paya. Agar paisa kata hai to support se contact kar. Order confirm shortly.",
+          "We received your payment but couldn't confirm the order yet. Don't pay again — your order will appear in your account shortly. If it doesn't, contact support with payment ID " +
+            rzpResponse.razorpay_payment_id +
+            ".",
         );
       }
 
       await rememberAddress(effectiveAddress);
-      finishSuccess(verifyData.orderId as string);
+      finishSuccess(verify.data.orderId);
     } catch (error) {
       const message = (error as Error)?.message || "";
       if (message === DISMISSED) {
         toast.message("Payment cancelled. You can try again.");
       } else {
         console.error("Checkout error:", error);
-        toast.error(message || "Couldn't place order. Try again.");
+        toast.error(message || "Couldn't place order. Try again.", {
+          duration: paymentCompleted ? 15000 : 5000,
+        });
       }
       submittingRef.current = false;
       setSubmitting(false);
