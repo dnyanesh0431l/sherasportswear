@@ -5,6 +5,13 @@ import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
+// Force Node.js runtime (not Edge) — firebase-admin requires Node APIs
+export const runtime = "nodejs";
+// Never cache / statically optimize this route
+export const dynamic = "force-dynamic";
+// Allow up to 60s on Pro plan (ignored on Hobby, capped at 10s)
+export const maxDuration = 60;
+
 // ---------------------------------------------------------------------------
 // Firebase Admin
 // ---------------------------------------------------------------------------
@@ -59,10 +66,10 @@ function getRazorpay() {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const SHIPPING_FEE_PAISE = 8000; // ₹80
+const SHIPPING_FEE_PAISE = 8000;
 const MAX_QTY_PER_ITEM = 99;
 const MAX_ITEMS = 50;
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+const SESSION_TTL_MS = 60 * 60 * 1000;
 
 type IncomingItem = {
   productId: string;
@@ -89,35 +96,6 @@ function badRequest(error: string, status = 400, stage?: string) {
   return NextResponse.json({ error, stage }, { status });
 }
 
-// ---------------------------------------------------------------------------
-// Logging helpers
-// ---------------------------------------------------------------------------
-function logEnvPresence() {
-  console.log("[create-order] ENV presence:", {
-    NEXT_PUBLIC_RAZORPAY_KEY_ID: !!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-    RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
-    FIREBASE_ADMIN_PROJECT_ID: !!process.env.FIREBASE_ADMIN_PROJECT_ID,
-    FIREBASE_ADMIN_CLIENT_EMAIL: !!process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-    FIREBASE_ADMIN_PRIVATE_KEY: !!process.env.FIREBASE_ADMIN_PRIVATE_KEY,
-  });
-  const id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-  if (id) {
-    const mode = id.startsWith("rzp_live_")
-      ? "LIVE"
-      : id.startsWith("rzp_test_")
-        ? "TEST"
-        : "UNKNOWN";
-    console.log(
-      "[create-order] Razorpay key mode:",
-      mode,
-      "| prefix:",
-      id.slice(0, 10) + "…",
-    );
-  } else {
-    console.warn("[create-order] NEXT_PUBLIC_RAZORPAY_KEY_ID is missing");
-  }
-}
-
 function findMissingEnv(): string[] {
   const missing: string[] = [];
   if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID)
@@ -138,10 +116,7 @@ function logRazorpayError(context: string, e: any) {
     statusCode: e?.statusCode,
     code: e?.error?.code,
     description: e?.error?.description,
-    source: e?.error?.source,
-    step: e?.error?.step,
     reason: e?.error?.reason,
-    metadata: e?.error?.metadata,
     stack: e?.stack,
   });
 }
@@ -156,7 +131,7 @@ function razorpayErrorMessage(e: any): string {
 }
 
 // ---------------------------------------------------------------------------
-// Price helpers — SELLING PRICE ONLY (pricePaise), MRP never used
+// Price helpers
 // ---------------------------------------------------------------------------
 function pickSellingPrice(...candidates: unknown[]): number | null {
   for (const c of candidates) {
@@ -186,19 +161,15 @@ async function resolveItemPrice(
   product: FirebaseFirestore.DocumentData;
 }> {
   const productSnap = await db.collection("products").doc(productId).get();
-  if (!productSnap.exists) {
-    throw new Error(`Product not found: ${productId}`);
-  }
+  if (!productSnap.exists) throw new Error(`Product not found: ${productId}`);
   const product = productSnap.data()!;
   const hasVariants =
     product.hasVariants === true ||
     (Array.isArray(product.variants) && product.variants.length > 0);
 
-  // ---------- A. Product has variants ----------
   if (hasVariants) {
     const wantSize = norm(size);
     const wantColor = norm(color);
-
     let variantData: FirebaseFirestore.DocumentData | null = null;
     let variantDocId: string | null = null;
 
@@ -222,11 +193,9 @@ async function resolveItemPrice(
           .limit(1)
           .get();
       }
-
       if (vSnap.empty) {
         vSnap = await variantsRef.where("size", "==", size).limit(1).get();
       }
-
       if (vSnap.empty) {
         const all = await variantsRef.get();
         const match = all.docs.find((d) => {
@@ -246,11 +215,7 @@ async function resolveItemPrice(
         variantDocId = vSnap.docs[0].id;
       }
     } catch (err) {
-      console.warn(
-        "[create-order] variants subcollection read failed",
-        { productId, size, color },
-        err,
-      );
+      console.warn("[create-order] variants subcollection read failed", err);
     }
 
     if (!variantData && Array.isArray(product.variants)) {
@@ -288,15 +253,12 @@ async function resolveItemPrice(
     };
   }
 
-  // ---------- B. Simple product (no variants) ----------
   const price = pickSellingPrice(
     product.pricePaise,
     product.price,
     product.basePricePaise,
   );
-  if (price === null) {
-    throw new Error(`Invalid selling price: ${productId}`);
-  }
+  if (price === null) throw new Error(`Invalid selling price: ${productId}`);
 
   return {
     unitPricePaise: price,
@@ -315,9 +277,14 @@ export async function POST(req: Request) {
   console.log("[create-order] === START ===");
 
   try {
-    // ---------- 0. ENV CHECK ----------
     stage = "env-check";
-    logEnvPresence();
+    console.log("[create-order] ENV presence:", {
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: !!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
+      FIREBASE_ADMIN_PROJECT_ID: !!process.env.FIREBASE_ADMIN_PROJECT_ID,
+      FIREBASE_ADMIN_CLIENT_EMAIL: !!process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      FIREBASE_ADMIN_PRIVATE_KEY: !!process.env.FIREBASE_ADMIN_PRIVATE_KEY,
+    });
     const missing = findMissingEnv();
     if (missing.length > 0) {
       console.error("[create-order] MISSING ENV VARS:", missing);
@@ -331,16 +298,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // ---------- 1. Auth ----------
     stage = "auth";
     const authHeader = req.headers.get("authorization") ?? "";
     const idToken = authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : null;
-    if (!idToken) {
-      console.warn("[create-order] no bearer token");
-      return badRequest("Unauthorized", 401, stage);
-    }
+    if (!idToken) return badRequest("Unauthorized", 401, stage);
 
     let uid: string;
     let userEmail = "";
@@ -348,13 +311,11 @@ export async function POST(req: Request) {
       const decoded = await getAdminAuth().verifyIdToken(idToken);
       uid = decoded.uid;
       userEmail = decoded.email ?? "";
-      console.log("[create-order] auth OK", { uid, email: userEmail });
     } catch (authErr) {
       console.error("[create-order] verifyIdToken failed", authErr);
       return badRequest("Unauthorized", 401, stage);
     }
 
-    // ---------- 2. Parse items ----------
     stage = "parse-body";
     const body = (await req.json().catch((e) => {
       console.error("[create-order] body parse failed", e);
@@ -367,13 +328,10 @@ export async function POST(req: Request) {
     } | null;
 
     const rawItems = body?.items;
-    if (!Array.isArray(rawItems) || rawItems.length === 0) {
-      console.warn("[create-order] cart empty");
+    if (!Array.isArray(rawItems) || rawItems.length === 0)
       return badRequest("Cart is empty", 400, stage);
-    }
-    if (rawItems.length > MAX_ITEMS) {
+    if (rawItems.length > MAX_ITEMS)
       return badRequest("Too many items in cart", 400, stage);
-    }
 
     const items: IncomingItem[] = [];
     for (const it of rawItems) {
@@ -385,13 +343,11 @@ export async function POST(req: Request) {
         typeof it.color !== "string" ||
         typeof it.quantity !== "number"
       ) {
-        console.warn("[create-order] invalid item shape", it);
         return badRequest("Invalid cart item", 400, stage);
       }
       const qty = Math.floor(it.quantity);
-      if (qty < 1 || qty > MAX_QTY_PER_ITEM) {
+      if (qty < 1 || qty > MAX_QTY_PER_ITEM)
         return badRequest("Invalid quantity", 400, stage);
-      }
       items.push({
         productId: it.productId.trim(),
         size: it.size.trim(),
@@ -399,12 +355,7 @@ export async function POST(req: Request) {
         quantity: qty,
       });
     }
-    console.log("[create-order] parsed items", {
-      count: items.length,
-      productIds: items.map((i) => i.productId),
-    });
 
-    // ---------- 3. Re-price ----------
     stage = "pricing";
     const db = getAdminDb();
 
@@ -414,25 +365,21 @@ export async function POST(req: Request) {
         items.map(async (it) => {
           const { unitPricePaise, variantSku, variantDocId, product } =
             await resolveItemPrice(db, it.productId, it.size, it.color);
-
           const name = String(product.name ?? "Product");
           const imagesArr = Array.isArray(product.images) ? product.images : [];
           const imageUrl = String(
             imagesArr[0] ?? product.image ?? product.imageUrl ?? "",
           );
-
           const variantId =
             variantDocId ||
             `${it.productId}-${it.size}-${it.color}`
               .toLowerCase()
               .replace(/\s+/g, "-");
-
           const sku =
             variantSku ||
             `SHERA-${it.productId}-${it.size}-${it.color}`
               .toUpperCase()
               .replace(/\s+/g, "");
-
           return {
             productId: it.productId,
             variantId,
@@ -465,17 +412,9 @@ export async function POST(req: Request) {
     const shippingPaise = SHIPPING_FEE_PAISE;
     const totalPaise = subtotalPaise - discountPaise + shippingPaise;
 
-    console.log("[create-order] pricing", {
-      subtotalPaise,
-      shippingPaise,
-      totalPaise,
-    });
-
-    if (totalPaise < 100) {
+    if (totalPaise < 100)
       return badRequest("Order total is too low", 400, stage);
-    }
 
-    // ---------- 4. Razorpay order ----------
     stage = "razorpay-create";
     const razorpay = getRazorpay();
     const sessionRef = db.collection("payment_sessions").doc();
@@ -489,11 +428,6 @@ export async function POST(req: Request) {
         receipt: sessionId,
         notes: { sessionId, userId: uid },
       });
-      console.log("[create-order] razorpay order created", {
-        id: rzpOrder.id,
-        amount: rzpOrder.amount,
-        status: rzpOrder.status,
-      });
     } catch (rzpErr) {
       logRazorpayError("create-order/razorpay-create", rzpErr);
       return NextResponse.json(
@@ -502,11 +436,10 @@ export async function POST(req: Request) {
           stage,
           code: (rzpErr as any)?.error?.code ?? null,
         },
-        { status: 502 }, // upstream failure
+        { status: 502 },
       );
     }
 
-    // ---------- 5. Temporary session ----------
     stage = "session-save";
     try {
       await sessionRef.set({
@@ -526,12 +459,8 @@ export async function POST(req: Request) {
         createdAt: FieldValue.serverTimestamp(),
         expiresAt: new Date(Date.now() + SESSION_TTL_MS),
       });
-      console.log("[create-order] session saved", sessionId);
     } catch (saveErr) {
-      console.error("[create-order] SESSION SAVE FAILED", {
-        sessionId,
-        error: saveErr,
-      });
+      console.error("[create-order] SESSION SAVE FAILED", saveErr);
       return NextResponse.json(
         { error: "Could not save payment session", stage },
         { status: 500 },
@@ -559,13 +488,9 @@ export async function POST(req: Request) {
       message: err?.message,
       stack: err?.stack,
       code: err?.code,
-      raw: err,
     });
     return NextResponse.json(
-      {
-        error: err?.message || "Could not create payment order",
-        stage,
-      },
+      { error: err?.message || "Could not create payment order", stage },
       { status: 500 },
     );
   }
