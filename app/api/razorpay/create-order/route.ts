@@ -1,9 +1,9 @@
 // app/api/razorpay/create-order/route.ts
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { getAuth } from "firebase-admin/auth";
 
 // ---------------------------------------------------------------------------
 // Firebase Admin
@@ -85,8 +85,74 @@ type PricedItem = {
   imageUrl: string;
 };
 
-function badRequest(error: string, status = 400) {
-  return NextResponse.json({ error }, { status });
+function badRequest(error: string, status = 400, stage?: string) {
+  return NextResponse.json({ error, stage }, { status });
+}
+
+// ---------------------------------------------------------------------------
+// Logging helpers
+// ---------------------------------------------------------------------------
+function logEnvPresence() {
+  console.log("[create-order] ENV presence:", {
+    NEXT_PUBLIC_RAZORPAY_KEY_ID: !!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+    RAZORPAY_KEY_SECRET: !!process.env.RAZORPAY_KEY_SECRET,
+    FIREBASE_ADMIN_PROJECT_ID: !!process.env.FIREBASE_ADMIN_PROJECT_ID,
+    FIREBASE_ADMIN_CLIENT_EMAIL: !!process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+    FIREBASE_ADMIN_PRIVATE_KEY: !!process.env.FIREBASE_ADMIN_PRIVATE_KEY,
+  });
+  const id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  if (id) {
+    const mode = id.startsWith("rzp_live_")
+      ? "LIVE"
+      : id.startsWith("rzp_test_")
+        ? "TEST"
+        : "UNKNOWN";
+    console.log(
+      "[create-order] Razorpay key mode:",
+      mode,
+      "| prefix:",
+      id.slice(0, 10) + "…",
+    );
+  } else {
+    console.warn("[create-order] NEXT_PUBLIC_RAZORPAY_KEY_ID is missing");
+  }
+}
+
+function findMissingEnv(): string[] {
+  const missing: string[] = [];
+  if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID)
+    missing.push("NEXT_PUBLIC_RAZORPAY_KEY_ID");
+  if (!process.env.RAZORPAY_KEY_SECRET) missing.push("RAZORPAY_KEY_SECRET");
+  if (!process.env.FIREBASE_ADMIN_PROJECT_ID)
+    missing.push("FIREBASE_ADMIN_PROJECT_ID");
+  if (!process.env.FIREBASE_ADMIN_CLIENT_EMAIL)
+    missing.push("FIREBASE_ADMIN_CLIENT_EMAIL");
+  if (!process.env.FIREBASE_ADMIN_PRIVATE_KEY)
+    missing.push("FIREBASE_ADMIN_PRIVATE_KEY");
+  return missing;
+}
+
+function logRazorpayError(context: string, e: any) {
+  console.error(`[${context}] Razorpay SDK error:`, {
+    message: e?.message,
+    statusCode: e?.statusCode,
+    code: e?.error?.code,
+    description: e?.error?.description,
+    source: e?.error?.source,
+    step: e?.error?.step,
+    reason: e?.error?.reason,
+    metadata: e?.error?.metadata,
+    stack: e?.stack,
+  });
+}
+
+function razorpayErrorMessage(e: any): string {
+  return (
+    e?.error?.description ||
+    e?.error?.reason ||
+    e?.message ||
+    "Razorpay request failed"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +167,6 @@ function pickSellingPrice(...candidates: unknown[]): number | null {
   return null;
 }
 
-/** Normalize strings for comparison: trim, lowercase, collapse spaces. */
 function norm(s: unknown): string {
   return String(s ?? "")
     .trim()
@@ -109,13 +174,6 @@ function norm(s: unknown): string {
     .replace(/\s+/g, " ");
 }
 
-/**
- * Resolve the selling price for a cart item.
- * Handles three shapes:
- *   1) Product with `hasVariants: true` → look up variants subcollection
- *   2) Product without variants     → product-level pricePaise / basePricePaise
- *   3) Variants stored as an array ON the product doc (legacy) → scan array
- */
 async function resolveItemPrice(
   db: FirebaseFirestore.Firestore,
   productId: string,
@@ -141,7 +199,6 @@ async function resolveItemPrice(
     const wantSize = norm(size);
     const wantColor = norm(color);
 
-    // A1. Variants subcollection
     let variantData: FirebaseFirestore.DocumentData | null = null;
     let variantDocId: string | null = null;
 
@@ -151,7 +208,6 @@ async function resolveItemPrice(
         .doc(productId)
         .collection("variants");
 
-      // exact size + color + active
       let vSnap = await variantsRef
         .where("size", "==", size)
         .where("color", "==", color)
@@ -159,7 +215,6 @@ async function resolveItemPrice(
         .limit(1)
         .get();
 
-      // size + active
       if (vSnap.empty) {
         vSnap = await variantsRef
           .where("size", "==", size)
@@ -168,12 +223,10 @@ async function resolveItemPrice(
           .get();
       }
 
-      // size only
       if (vSnap.empty) {
         vSnap = await variantsRef.where("size", "==", size).limit(1).get();
       }
 
-      // last resort: fetch all active and match in JS (case/space tolerant)
       if (vSnap.empty) {
         const all = await variantsRef.get();
         const match = all.docs.find((d) => {
@@ -193,11 +246,13 @@ async function resolveItemPrice(
         variantDocId = vSnap.docs[0].id;
       }
     } catch (err) {
-      // Subcollection may not exist — fall through to array check
-      console.warn("[create-order] variants subcollection read failed", err);
+      console.warn(
+        "[create-order] variants subcollection read failed",
+        { productId, size, color },
+        err,
+      );
     }
 
-    // A2. Legacy array on the product doc
     if (!variantData && Array.isArray(product.variants)) {
       const match = (product.variants as FirebaseFirestore.DocumentData[]).find(
         (v) =>
@@ -255,13 +310,37 @@ async function resolveItemPrice(
 // POST /api/razorpay/create-order
 // ---------------------------------------------------------------------------
 export async function POST(req: Request) {
+  let stage = "init";
+  const startedAt = Date.now();
+  console.log("[create-order] === START ===");
+
   try {
+    // ---------- 0. ENV CHECK ----------
+    stage = "env-check";
+    logEnvPresence();
+    const missing = findMissingEnv();
+    if (missing.length > 0) {
+      console.error("[create-order] MISSING ENV VARS:", missing);
+      return NextResponse.json(
+        {
+          error: `Server misconfigured. Missing env vars: ${missing.join(", ")}`,
+          stage,
+          missing,
+        },
+        { status: 500 },
+      );
+    }
+
     // ---------- 1. Auth ----------
+    stage = "auth";
     const authHeader = req.headers.get("authorization") ?? "";
     const idToken = authHeader.startsWith("Bearer ")
       ? authHeader.slice(7).trim()
       : null;
-    if (!idToken) return badRequest("Unauthorized", 401);
+    if (!idToken) {
+      console.warn("[create-order] no bearer token");
+      return badRequest("Unauthorized", 401, stage);
+    }
 
     let uid: string;
     let userEmail = "";
@@ -269,12 +348,18 @@ export async function POST(req: Request) {
       const decoded = await getAdminAuth().verifyIdToken(idToken);
       uid = decoded.uid;
       userEmail = decoded.email ?? "";
-    } catch {
-      return badRequest("Unauthorized", 401);
+      console.log("[create-order] auth OK", { uid, email: userEmail });
+    } catch (authErr) {
+      console.error("[create-order] verifyIdToken failed", authErr);
+      return badRequest("Unauthorized", 401, stage);
     }
 
     // ---------- 2. Parse items ----------
-    const body = (await req.json().catch(() => null)) as {
+    stage = "parse-body";
+    const body = (await req.json().catch((e) => {
+      console.error("[create-order] body parse failed", e);
+      return null;
+    })) as {
       items?: IncomingItem[];
       email?: string;
       phone?: string;
@@ -283,10 +368,11 @@ export async function POST(req: Request) {
 
     const rawItems = body?.items;
     if (!Array.isArray(rawItems) || rawItems.length === 0) {
-      return badRequest("Cart is empty");
+      console.warn("[create-order] cart empty");
+      return badRequest("Cart is empty", 400, stage);
     }
     if (rawItems.length > MAX_ITEMS) {
-      return badRequest("Too many items in cart");
+      return badRequest("Too many items in cart", 400, stage);
     }
 
     const items: IncomingItem[] = [];
@@ -299,11 +385,12 @@ export async function POST(req: Request) {
         typeof it.color !== "string" ||
         typeof it.quantity !== "number"
       ) {
-        return badRequest("Invalid cart item");
+        console.warn("[create-order] invalid item shape", it);
+        return badRequest("Invalid cart item", 400, stage);
       }
       const qty = Math.floor(it.quantity);
       if (qty < 1 || qty > MAX_QTY_PER_ITEM) {
-        return badRequest("Invalid quantity");
+        return badRequest("Invalid quantity", 400, stage);
       }
       items.push({
         productId: it.productId.trim(),
@@ -312,8 +399,13 @@ export async function POST(req: Request) {
         quantity: qty,
       });
     }
+    console.log("[create-order] parsed items", {
+      count: items.length,
+      productIds: items.map((i) => i.productId),
+    });
 
     // ---------- 3. Re-price ----------
+    stage = "pricing";
     const db = getAdminDb();
 
     let pricedItems: PricedItem[];
@@ -357,8 +449,12 @@ export async function POST(req: Request) {
         }),
       );
     } catch (priceErr) {
-      console.error("[create-order] pricing failed", priceErr);
-      return badRequest((priceErr as Error)?.message || "Pricing failed");
+      console.error("[create-order] PRICING FAILED", priceErr);
+      return badRequest(
+        (priceErr as Error)?.message || "Pricing failed",
+        400,
+        stage,
+      );
     }
 
     const subtotalPaise = pricedItems.reduce(
@@ -369,39 +465,83 @@ export async function POST(req: Request) {
     const shippingPaise = SHIPPING_FEE_PAISE;
     const totalPaise = subtotalPaise - discountPaise + shippingPaise;
 
+    console.log("[create-order] pricing", {
+      subtotalPaise,
+      shippingPaise,
+      totalPaise,
+    });
+
     if (totalPaise < 100) {
-      return badRequest("Order total is too low");
+      return badRequest("Order total is too low", 400, stage);
     }
 
     // ---------- 4. Razorpay order ----------
+    stage = "razorpay-create";
     const razorpay = getRazorpay();
     const sessionRef = db.collection("payment_sessions").doc();
     const sessionId = sessionRef.id;
 
-    const rzpOrder = await razorpay.orders.create({
-      amount: totalPaise,
-      currency: "INR",
-      receipt: sessionId,
-      notes: { sessionId, userId: uid },
-    });
+    let rzpOrder: any;
+    try {
+      rzpOrder = await razorpay.orders.create({
+        amount: totalPaise,
+        currency: "INR",
+        receipt: sessionId,
+        notes: { sessionId, userId: uid },
+      });
+      console.log("[create-order] razorpay order created", {
+        id: rzpOrder.id,
+        amount: rzpOrder.amount,
+        status: rzpOrder.status,
+      });
+    } catch (rzpErr) {
+      logRazorpayError("create-order/razorpay-create", rzpErr);
+      return NextResponse.json(
+        {
+          error: razorpayErrorMessage(rzpErr),
+          stage,
+          code: (rzpErr as any)?.error?.code ?? null,
+        },
+        { status: 502 }, // upstream failure
+      );
+    }
 
-    // ---------- 5. Temporary session (orders NAHI) ----------
-    await sessionRef.set({
+    // ---------- 5. Temporary session ----------
+    stage = "session-save";
+    try {
+      await sessionRef.set({
+        sessionId,
+        userId: uid,
+        email: (body?.email || userEmail || "").trim(),
+        phone: (body?.phone || "").trim(),
+        shippingAddress: body?.shippingAddress || null,
+        items: pricedItems,
+        subtotalPaise,
+        discountPaise,
+        shippingPaise,
+        totalPaise,
+        currency: "INR",
+        razorpayOrderId: rzpOrder.id,
+        status: "pending",
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      });
+      console.log("[create-order] session saved", sessionId);
+    } catch (saveErr) {
+      console.error("[create-order] SESSION SAVE FAILED", {
+        sessionId,
+        error: saveErr,
+      });
+      return NextResponse.json(
+        { error: "Could not save payment session", stage },
+        { status: 500 },
+      );
+    }
+
+    console.log("[create-order] === SUCCESS ===", {
       sessionId,
-      userId: uid,
-      email: (body?.email || userEmail || "").trim(),
-      phone: (body?.phone || "").trim(),
-      shippingAddress: body?.shippingAddress || null,
-      items: pricedItems,
-      subtotalPaise,
-      discountPaise,
-      shippingPaise,
-      totalPaise,
-      currency: "INR",
       razorpayOrderId: rzpOrder.id,
-      status: "pending", // pending | consumed
-      createdAt: FieldValue.serverTimestamp(),
-      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      elapsedMs: Date.now() - startedAt,
     });
 
     return NextResponse.json({
@@ -414,10 +554,18 @@ export async function POST(req: Request) {
       shippingPaise,
       totalPaise,
     });
-  } catch (err) {
-    console.error("[create-order] error", err);
+  } catch (err: any) {
+    console.error(`[create-order] FATAL at stage=${stage}`, {
+      message: err?.message,
+      stack: err?.stack,
+      code: err?.code,
+      raw: err,
+    });
     return NextResponse.json(
-      { error: (err as Error)?.message || "Could not create payment order" },
+      {
+        error: err?.message || "Could not create payment order",
+        stage,
+      },
       { status: 500 },
     );
   }
