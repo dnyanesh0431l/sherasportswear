@@ -9,10 +9,6 @@ import {
 import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const maxDuration = 60;
-
 function getAdminApp() {
   if (!getApps().length) {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
@@ -39,16 +35,13 @@ function getRazorpay() {
   return new Razorpay({ key_id, key_secret });
 }
 
-function logRazorpayError(context: string, e: any) {
-  console.error(`[${context}] Razorpay SDK error:`, {
-    message: e?.message,
-    statusCode: e?.statusCode,
-    code: e?.error?.code,
-    description: e?.error?.description,
-    reason: e?.error?.reason,
-  });
-}
-
+// ---------------------------------------------------------------------------
+// Order number: SHERA-YYMMDD-XXXX
+//   e.g. SHERA-261118-A7K2
+//   YY = 2-digit year, MM = month, DD = day, XXXX = 4 random chars.
+// Alphabet excludes 0/O, 1/I/L to avoid human confusion when read aloud.
+// Retries up to 5 times if the candidate already exists that day.
+// ---------------------------------------------------------------------------
 const ORDER_NO_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 async function generateUniqueOrderNumber(db: Firestore): Promise<string> {
@@ -56,17 +49,21 @@ async function generateUniqueOrderNumber(db: Firestore): Promise<string> {
   const yy = now.getFullYear().toString().slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
+
   for (let attempt = 0; attempt < 5; attempt++) {
     let rand = "";
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < 4; i++) {
       rand +=
         ORDER_NO_ALPHABET[Math.floor(Math.random() * ORDER_NO_ALPHABET.length)];
+    }
     const candidate = `SHERA-${yy}${mm}${dd}-${rand}`;
+
     const existing = await db
       .collection("orders")
       .where("orderNumber", "==", candidate)
       .limit(1)
       .get();
+
     if (existing.empty) return candidate;
   }
   throw new Error("Could not generate a unique order number");
@@ -78,31 +75,23 @@ type Body = {
   razorpay_signature?: string;
 };
 
-function fail(error: string, status = 400, stage?: string) {
-  return NextResponse.json({ verified: false, error, stage }, { status });
+function fail(error: string, status = 400) {
+  return NextResponse.json({ verified: false, error }, { status });
 }
 
 export async function POST(req: Request) {
-  let stage = "init";
-  const startedAt = Date.now();
-  console.log("[verify] === START ===");
-
   try {
-    stage = "parse-body";
-    const body = (await req.json().catch((e) => {
-      console.error("[verify] body parse failed", e);
-      return null;
-    })) as Body | null;
+    const body = (await req.json().catch(() => null)) as Body | null;
     const razorpay_order_id = body?.razorpay_order_id;
     const razorpay_payment_id = body?.razorpay_payment_id;
     const razorpay_signature = body?.razorpay_signature;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature)
-      return fail("Missing fields", 400, stage);
+      return fail("Missing fields");
 
-    stage = "hmac";
+    // ---------- 1. HMAC ----------
     const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret) return fail("Server misconfigured", 500, stage);
+    if (!secret) return fail("Server misconfigured", 500);
 
     const expected = crypto
       .createHmac("sha256", secret)
@@ -110,34 +99,26 @@ export async function POST(req: Request) {
       .digest("hex");
 
     if (!/^[0-9a-f]+$/i.test(razorpay_signature))
-      return fail("Invalid signature format", 400, stage);
+      return fail("Invalid signature");
 
     const a = Buffer.from(expected, "hex");
     const b = Buffer.from(razorpay_signature, "hex");
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b))
-      return fail("Invalid signature", 400, stage);
+      return fail("Invalid signature");
 
-    stage = "fetch-payment";
+    // ---------- 2. Razorpay se payment confirm ----------
     const razorpay = getRazorpay();
-    let payment: any;
-    try {
-      payment = await razorpay.payments.fetch(razorpay_payment_id);
-    } catch (fetchErr) {
-      logRazorpayError("verify/fetch-payment", fetchErr);
-      return fail("Could not fetch payment", 502, stage);
-    }
+    let payment = await razorpay.payments.fetch(razorpay_payment_id);
 
-    if (payment.currency !== "INR")
-      return fail("Currency mismatch", 400, stage);
+    if (payment.currency !== "INR") return fail("Currency mismatch");
     if (payment.order_id !== razorpay_order_id)
-      return fail("Order ID mismatch", 400, stage);
+      return fail("Order ID mismatch");
 
     const amountPaise = Number(payment.amount);
     if (!Number.isFinite(amountPaise) || amountPaise <= 0)
-      return fail("Invalid amount", 400, stage);
+      return fail("Invalid amount");
 
     if (payment.status === "authorized") {
-      stage = "capture-payment";
       try {
         await razorpay.payments.capture(
           razorpay_payment_id,
@@ -145,15 +126,15 @@ export async function POST(req: Request) {
           "INR",
         );
         payment = await razorpay.payments.fetch(razorpay_payment_id);
-      } catch (captureErr) {
-        logRazorpayError("verify/capture-payment", captureErr);
-        return fail("Could not capture payment", 502, stage);
+      } catch (e) {
+        console.error("[verify] capture failed", e);
+        return fail("Could not capture payment");
       }
     }
     if (payment.status !== "captured")
-      return fail(`Payment status: ${payment.status}`, 400, stage);
+      return fail(`Payment status: ${payment.status}`);
 
-    stage = "find-session";
+    // ---------- 3. Session dhundo ----------
     const db = getAdminDb();
     const sessionsSnap = await db
       .collection("payment_sessions")
@@ -161,24 +142,7 @@ export async function POST(req: Request) {
       .limit(1)
       .get();
 
-    if (sessionsSnap.empty) {
-      stage = "find-existing-order";
-      const existingOrders = await db
-        .collection("orders")
-        .where("razorpayOrderId", "==", razorpay_order_id)
-        .limit(1)
-        .get();
-      if (!existingOrders.empty) {
-        const o = existingOrders.docs[0];
-        return NextResponse.json({
-          verified: true,
-          orderId: o.id,
-          orderNumber: o.data()?.orderNumber ?? null,
-          paymentStatus: "captured",
-        });
-      }
-      return fail("Session not found for payment", 404, stage);
-    }
+    if (sessionsSnap.empty) return fail("Session not found for payment", 404);
 
     const sessionDoc = sessionsSnap.docs[0];
     const session = sessionDoc.data();
@@ -204,13 +168,13 @@ export async function POST(req: Request) {
         expected: session.totalPaise,
         paid: amountPaise,
       });
-      return fail("Amount mismatch", 400, stage);
+      return fail("Amount mismatch");
     }
 
-    stage = "generate-order-number";
+    // ---------- 4. Order number generate ----------
     const orderNumber = await generateUniqueOrderNumber(db);
 
-    stage = "batch-write";
+    // ---------- 5. AB order banao ----------
     const orderRef = db.collection("orders").doc();
     const orderId = orderRef.id;
     const paymentRef = db.collection("payments").doc();
@@ -219,8 +183,8 @@ export async function POST(req: Request) {
     const batch = db.batch();
 
     batch.set(orderRef, {
-      orderId,
-      orderNumber,
+      orderId, // Firestore doc id (internal)
+      orderNumber, // SHERA-YYMMDD-XXXX (customer-facing)
       userId: session.userId,
       email: session.email,
       phone: session.phone,
@@ -246,7 +210,7 @@ export async function POST(req: Request) {
     batch.set(paymentRef, {
       paymentId,
       orderId,
-      orderNumber,
+      orderNumber, // same number for easy join
       userId: session.userId,
       provider: "razorpay",
       providerOrderId: razorpay_order_id,
@@ -261,21 +225,12 @@ export async function POST(req: Request) {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // Mark session consumed (do NOT delete — update + delete in same batch fails)
-    batch.update(sessionDoc.ref, {
-      status: "consumed",
-      consumedAt: FieldValue.serverTimestamp(),
-      consumedOrderId: orderId,
-    });
+    batch.update(sessionDoc.ref, { status: "consumed" });
+    batch.delete(sessionDoc.ref);
 
-    try {
-      await batch.commit();
-    } catch (batchErr) {
-      console.error("[verify] BATCH COMMIT FAILED", batchErr);
-      return fail("Failed to create order in database", 500, stage);
-    }
+    await batch.commit();
 
-    stage = "send-email";
+    // ---------- 6. Email (same orderNumber pass karo) ----------
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     try {
       await fetch(`${siteUrl}/api/orders/confirm`, {
@@ -283,7 +238,7 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId,
-          orderNumber,
+          orderNumber, // ← SHERA-YYMMDD-XXXX
           email: session.email,
           customerName: session.shippingAddress?.fullName,
           items: session.items,
@@ -296,15 +251,9 @@ export async function POST(req: Request) {
           paymentStatus: "captured",
         }),
       });
-    } catch (emailErr) {
-      console.error("[verify] email trigger failed", emailErr);
+    } catch (e) {
+      console.error("[verify] email trigger failed", e);
     }
-
-    console.log("[verify] === SUCCESS ===", {
-      orderId,
-      orderNumber,
-      elapsedMs: Date.now() - startedAt,
-    });
 
     return NextResponse.json({
       verified: true,
@@ -312,13 +261,10 @@ export async function POST(req: Request) {
       orderNumber,
       paymentStatus: "captured",
     });
-  } catch (err: any) {
-    console.error(`[verify] FATAL at stage=${stage}`, {
-      message: err?.message,
-      stack: err?.stack,
-    });
+  } catch (err) {
+    console.error("[verify] error", err);
     return NextResponse.json(
-      { verified: false, error: err?.message || "Verification failed", stage },
+      { verified: false, error: "Verification failed" },
       { status: 500 },
     );
   }
