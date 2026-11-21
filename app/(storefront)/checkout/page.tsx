@@ -88,7 +88,10 @@ function loadRazorpayScript(): Promise<boolean> {
     );
     if (existing) {
       existing.addEventListener("load", () => resolve(!!window.Razorpay));
-      existing.addEventListener("error", () => resolve(false));
+      existing.addEventListener("error", (e) => {
+        console.error("[checkout] Razorpay script failed to load (existing tag)", e);
+        resolve(false);
+      });
       return;
     }
 
@@ -96,7 +99,10 @@ function loadRazorpayScript(): Promise<boolean> {
     s.src = RAZORPAY_SCRIPT;
     s.async = true;
     s.onload = () => resolve(!!window.Razorpay);
-    s.onerror = () => resolve(false);
+    s.onerror = (e) => {
+      console.error("[checkout] Razorpay script failed to load", RAZORPAY_SCRIPT, e);
+      resolve(false);
+    };
     document.body.appendChild(s);
   });
 }
@@ -111,8 +117,10 @@ function openRazorpay(
   options: Omit<RazorpayOptions, "handler" | "modal">,
 ): Promise<RazorpaySuccess> {
   return new Promise((resolve, reject) => {
-    if (!window.Razorpay)
+    if (!window.Razorpay) {
+      console.error("[checkout] window.Razorpay is undefined");
       return reject(new Error("Payment gateway not loaded."));
+    }
     let lastFailure: string | null = null;
 
     const rzp = new window.Razorpay({
@@ -120,10 +128,14 @@ function openRazorpay(
       handler: (response) => resolve(response),
       modal: {
         confirm_close: true,
-        ondismiss: () => reject(new Error(lastFailure ?? DISMISSED)),
+        ondismiss: () => {
+          console.warn("[checkout] Razorpay modal dismissed", { lastFailure });
+          reject(new Error(lastFailure ?? DISMISSED));
+        },
       },
     });
     rzp.on("payment.failed", (r) => {
+      console.error("[checkout] Razorpay payment.failed", r);
       lastFailure =
         r.error?.description || r.error?.reason || "Payment failed.";
     });
@@ -151,17 +163,32 @@ async function postJson<T = any>(
   body: unknown,
   headers: Record<string, string> = {},
 ): Promise<ApiResult<T>> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    console.error(`[checkout] ${url} network error (request never completed):`, networkErr);
+    throw new Error("Network error. Check your connection and try again.");
+  }
   const text = await res.text();
   let data: T | null = null;
   try {
     data = JSON.parse(text) as T;
   } catch {
     data = null;
+  }
+  if (res.ok) {
+    console.log(`[checkout] ${url} -> ${res.status}`, data ?? text);
+  } else {
+    console.error(`[checkout] ${url} -> ${res.status} ${res.statusText}`, {
+      json: data,
+      rawBody: text,
+      isJson: data !== null,
+    });
   }
   return { ok: res.ok, status: res.status, data, text };
 }
@@ -760,7 +787,8 @@ function CheckoutBody() {
           setSaveAddress(false);
           setPhone((p) => p || list[0].phone);
         }
-      } catch {
+      } catch (addrErr) {
+        console.error("[checkout] failed to load saved addresses:", addrErr);
         // Fall back to the new-address form
       } finally {
         setLoadingAddresses(false);
@@ -850,7 +878,8 @@ function CheckoutBody() {
         isDefault: savedAddresses.length === 0,
         createdAt: serverTimestamp(),
       });
-    } catch {
+    } catch (saveErr) {
+      console.error("[checkout] failed to save address:", saveErr);
       // Never blocks the order
     }
   }
@@ -909,12 +938,7 @@ function CheckoutBody() {
 
       if (!create.ok || !create.data?.razorpayOrderId) {
         // Surface the real reason instead of a generic message
-        console.error(
-          "create-order failed:",
-          create.status,
-          create.data?.stage ?? "(no stage)",
-          create.text.slice(0, 500),
-        );
+        console.error("[checkout] create-order failed at stage:", create.data?.stage ?? "(no stage / non-JSON response)");
         throw new Error(
           create.data?.error ||
             `Couldn't start the payment (error ${create.status}). Please try again.`,
@@ -973,12 +997,7 @@ function CheckoutBody() {
       );
 
       if (!verify.ok || !verify.data?.verified || !verify.data?.orderId) {
-        console.error(
-          "verify failed:",
-          verify.status,
-          verify.data?.stage ?? "(no stage)",
-          verify.text.slice(0, 500),
-        );
+        console.error("[checkout] verify failed at stage:", verify.data?.stage ?? "(no stage / non-JSON response)", { paymentId: rzpResponse.razorpay_payment_id, orderId: rzpResponse.razorpay_order_id });
         throw new Error(
           "We received your payment but couldn't confirm the order yet. Don't pay again — your order will appear in your account shortly. If it doesn't, contact support with payment ID " +
             rzpResponse.razorpay_payment_id +
@@ -990,10 +1009,15 @@ function CheckoutBody() {
       finishSuccess(verify.data.orderId);
     } catch (error) {
       const message = (error as Error)?.message || "";
+      console.error("[checkout] submit error:", {
+        message,
+        paymentCompleted,
+        error,
+        stack: (error as Error)?.stack,
+      });
       if (message === DISMISSED) {
         toast.message("Payment cancelled. You can try again.");
       } else {
-        console.error("Checkout error:", error);
         toast.error(message || "Couldn't place order. Try again.", {
           duration: paymentCompleted ? 15000 : 5000,
         });
