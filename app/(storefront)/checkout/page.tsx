@@ -89,7 +89,10 @@ function loadRazorpayScript(): Promise<boolean> {
     if (existing) {
       existing.addEventListener("load", () => resolve(!!window.Razorpay));
       existing.addEventListener("error", (e) => {
-        console.error("[checkout] Razorpay script failed to load (existing tag)", e);
+        console.error(
+          "[checkout] Razorpay script failed to load (existing tag)",
+          e,
+        );
         resolve(false);
       });
       return;
@@ -100,7 +103,11 @@ function loadRazorpayScript(): Promise<boolean> {
     s.async = true;
     s.onload = () => resolve(!!window.Razorpay);
     s.onerror = (e) => {
-      console.error("[checkout] Razorpay script failed to load", RAZORPAY_SCRIPT, e);
+      console.error(
+        "[checkout] Razorpay script failed to load",
+        RAZORPAY_SCRIPT,
+        e,
+      );
       resolve(false);
     };
     document.body.appendChild(s);
@@ -171,7 +178,10 @@ async function postJson<T = any>(
       body: JSON.stringify(body),
     });
   } catch (networkErr) {
-    console.error(`[checkout] ${url} network error (request never completed):`, networkErr);
+    console.error(
+      `[checkout] ${url} network error (request never completed):`,
+      networkErr,
+    );
     throw new Error("Network error. Check your connection and try again.");
   }
   const text = await res.text();
@@ -938,7 +948,10 @@ function CheckoutBody() {
 
       if (!create.ok || !create.data?.razorpayOrderId) {
         // Surface the real reason instead of a generic message
-        console.error("[checkout] create-order failed at stage:", create.data?.stage ?? "(no stage / non-JSON response)");
+        console.error(
+          "[checkout] create-order failed at stage:",
+          create.data?.stage ?? "(no stage / non-JSON response)",
+        );
         throw new Error(
           create.data?.error ||
             `Couldn't start the payment (error ${create.status}). Please try again.`,
@@ -997,7 +1010,14 @@ function CheckoutBody() {
       );
 
       if (!verify.ok || !verify.data?.verified || !verify.data?.orderId) {
-        console.error("[checkout] verify failed at stage:", verify.data?.stage ?? "(no stage / non-JSON response)", { paymentId: rzpResponse.razorpay_payment_id, orderId: rzpResponse.razorpay_order_id });
+        console.error(
+          "[checkout] verify failed at stage:",
+          verify.data?.stage ?? "(no stage / non-JSON response)",
+          {
+            paymentId: rzpResponse.razorpay_payment_id,
+            orderId: rzpResponse.razorpay_order_id,
+          },
+        );
         throw new Error(
           "We received your payment but couldn't confirm the order yet. Don't pay again — your order will appear in your account shortly. If it doesn't, contact support with payment ID " +
             rzpResponse.razorpay_payment_id +
